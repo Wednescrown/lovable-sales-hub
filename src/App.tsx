@@ -8,6 +8,7 @@ import Products from "./pages/Products";
 import Categories from "./pages/Categories";
 import StockAdjustment from "./pages/StockAdjustment";
 import StockCount from "./pages/StockCount";
+import POS from "./pages/POS";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ const App = () => (
           <Route path="/categorias" element={<Categories />} />
           <Route path="/inventario" element={<StockAdjustment />} />
           <Route path="/contagem-inventario" element={<StockCount />} />
+          <Route path="/pos" element={<POS />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
