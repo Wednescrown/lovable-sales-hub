@@ -4,6 +4,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   DenominationPanel,
   getDefaultDenominations,
@@ -20,10 +32,10 @@ import {
   Banknote,
   TrendingUp,
   CreditCard,
-  Building2,
   Smartphone,
   Clock,
   CheckCircle2,
+  History,
 } from "lucide-react";
 
 function formatKz(value: number) {
@@ -50,12 +62,34 @@ interface PickupRecord {
   notes: string;
 }
 
+interface DeclarationRecord {
+  id: string;
+  date: string;
+  operator: string;
+  totalCash: number;
+  totalTpa: number;
+  totalTransfer: number;
+  status: "Aberto" | "Fechado";
+}
+
+const mockDeclarationHistory: DeclarationRecord[] = [
+  { id: "DEC-004", date: "18/02/2026 08:15", operator: "Maria Silva", totalCash: 25000, totalTpa: 12000, totalTransfer: 3500, status: "Fechado" },
+  { id: "DEC-003", date: "17/02/2026 08:30", operator: "João Mendes", totalCash: 18000, totalTpa: 8500, totalTransfer: 2000, status: "Fechado" },
+  { id: "DEC-002", date: "16/02/2026 08:00", operator: "Maria Silva", totalCash: 30000, totalTpa: 15000, totalTransfer: 5000, status: "Fechado" },
+  { id: "DEC-001", date: "15/02/2026 08:45", operator: "Ana Costa", totalCash: 22000, totalTpa: 9000, totalTransfer: 1500, status: "Fechado" },
+];
+
+const mockOperators = ["Maria Silva", "João Mendes", "Ana Costa"];
+
 export default function Financas() {
   const [openingDenominations, setOpeningDenominations] = useState(getDefaultDenominations);
   const [isOpeningDeclared, setIsOpeningDeclared] = useState(false);
   const [pickupOpen, setPickupOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [pickups, setPickups] = useState<PickupRecord[]>([]);
+  const [tpaAmount, setTpaAmount] = useState(0);
+  const [multicaixaAmount, setMulticaixaAmount] = useState(0);
+  const [selectedOperator, setSelectedOperator] = useState("");
 
   const openingTotal = getTotalFromDenominations(openingDenominations);
   const totalPickups = pickups.reduce((sum, p) => sum + p.amount, 0);
@@ -184,37 +218,180 @@ export default function Financas() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {!isOpeningDeclared ? (
-                  <div className="space-y-4">
-                    <p className="text-sm text-muted-foreground">
-                      Conte as notas e moedas em caixa para iniciar o turno.
-                    </p>
-                    <DenominationPanel
-                      denominations={openingDenominations}
-                      onChange={setOpeningDenominations}
-                    />
-                    <Button
-                      className="w-full"
-                      size="lg"
-                      disabled={openingTotal <= 0}
-                      onClick={handleDeclareOpening}
-                    >
-                      Declarar Abertura — {formatKz(openingTotal)}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
-                      <span className="text-sm text-muted-foreground">Fundo de caixa declarado</span>
-                      <span className="text-lg font-bold">{formatKz(openingTotal)}</span>
+                <Tabs defaultValue="current">
+                  <TabsList className="w-full">
+                    <TabsTrigger value="current" className="flex-1 gap-1.5">
+                      <Wallet className="h-3.5 w-3.5" />
+                      Declaração Actual
+                    </TabsTrigger>
+                    <TabsTrigger value="history" className="flex-1 gap-1.5">
+                      <History className="h-3.5 w-3.5" />
+                      Histórico
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="current">
+                    {!isOpeningDeclared ? (
+                      <div className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                          Conte as notas e moedas em caixa para iniciar o turno.
+                        </p>
+
+                        {/* Operator selector */}
+                        <div className="space-y-1.5">
+                          <Label htmlFor="operator">Operador de Caixa</Label>
+                          <Select value={selectedOperator} onValueChange={setSelectedOperator}>
+                            <SelectTrigger id="operator">
+                              <SelectValue placeholder="Seleccione o operador" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {mockOperators.map((op) => (
+                                <SelectItem key={op} value={op}>{op}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <DenominationPanel
+                          denominations={openingDenominations}
+                          onChange={setOpeningDenominations}
+                        />
+
+                        {/* TPA and Multicaixa fields */}
+                        <div className="border-t pt-4 space-y-3">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <Label htmlFor="tpa" className="flex items-center gap-1.5">
+                                <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+                                Valor TPA
+                              </Label>
+                              <div className="relative">
+                                <Input
+                                  id="tpa"
+                                  type="number"
+                                  min={0}
+                                  value={tpaAmount || ""}
+                                  onChange={(e) => setTpaAmount(Math.max(0, Number(e.target.value)))}
+                                  placeholder="0"
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Kz</span>
+                              </div>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor="multicaixa" className="flex items-center gap-1.5">
+                                <Smartphone className="h-3.5 w-3.5 text-muted-foreground" />
+                                Multicaixa / Transf.
+                              </Label>
+                              <div className="relative">
+                                <Input
+                                  id="multicaixa"
+                                  type="number"
+                                  min={0}
+                                  value={multicaixaAmount || ""}
+                                  onChange={(e) => setMulticaixaAmount(Math.max(0, Number(e.target.value)))}
+                                  placeholder="0"
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Kz</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Summary */}
+                        <div className="border-t pt-4 space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Cash (notas/moedas)</span>
+                            <span className="font-medium">{formatKz(openingTotal)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">TPA</span>
+                            <span className="font-medium">{formatKz(tpaAmount)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Multicaixa / Transf.</span>
+                            <span className="font-medium">{formatKz(multicaixaAmount)}</span>
+                          </div>
+                          <div className="flex justify-between text-base font-bold pt-2 border-t">
+                            <span>Total Geral</span>
+                            <span className="text-primary">{formatKz(openingTotal + tpaAmount + multicaixaAmount)}</span>
+                          </div>
+                        </div>
+
+                        <Button
+                          className="w-full"
+                          size="lg"
+                          disabled={openingTotal <= 0 || !selectedOperator}
+                          onClick={handleDeclareOpening}
+                        >
+                          Declarar Abertura — {formatKz(openingTotal + tpaAmount + multicaixaAmount)}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
+                          <span className="text-sm text-muted-foreground">Operador</span>
+                          <span className="text-sm font-medium">{selectedOperator}</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="rounded-lg bg-muted/50 p-3 text-center">
+                            <p className="text-xs text-muted-foreground">Cash</p>
+                            <p className="text-sm font-bold">{formatKz(openingTotal)}</p>
+                          </div>
+                          <div className="rounded-lg bg-muted/50 p-3 text-center">
+                            <p className="text-xs text-muted-foreground">TPA</p>
+                            <p className="text-sm font-bold">{formatKz(tpaAmount)}</p>
+                          </div>
+                          <div className="rounded-lg bg-muted/50 p-3 text-center">
+                            <p className="text-xs text-muted-foreground">Transf.</p>
+                            <p className="text-sm font-bold">{formatKz(multicaixaAmount)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg bg-primary/10 p-3">
+                          <span className="text-sm font-medium">Total Geral</span>
+                          <span className="text-lg font-bold text-primary">{formatKz(openingTotal + tpaAmount + multicaixaAmount)}</span>
+                        </div>
+                        <DenominationPanel
+                          denominations={openingDenominations}
+                          onChange={setOpeningDenominations}
+                          readOnly
+                        />
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="history">
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Data</TableHead>
+                            <TableHead>Operador</TableHead>
+                            <TableHead className="text-right">Cash</TableHead>
+                            <TableHead className="text-right">TPA</TableHead>
+                            <TableHead className="text-right">Transf.</TableHead>
+                            <TableHead className="text-center">Estado</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {mockDeclarationHistory.map((d) => (
+                            <TableRow key={d.id}>
+                              <TableCell className="text-xs">{d.date}</TableCell>
+                              <TableCell className="text-sm">{d.operator}</TableCell>
+                              <TableCell className="text-right text-sm">{formatKz(d.totalCash)}</TableCell>
+                              <TableCell className="text-right text-sm">{formatKz(d.totalTpa)}</TableCell>
+                              <TableCell className="text-right text-sm">{formatKz(d.totalTransfer)}</TableCell>
+                              <TableCell className="text-center">
+                                <Badge variant={d.status === "Fechado" ? "secondary" : "default"} className="text-xs">
+                                  {d.status}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
                     </div>
-                    <DenominationPanel
-                      denominations={openingDenominations}
-                      onChange={setOpeningDenominations}
-                      readOnly
-                    />
-                  </div>
-                )}
+                  </TabsContent>
+                </Tabs>
               </CardContent>
             </Card>
           </div>
