@@ -166,8 +166,8 @@ export function AppSidebar() {
               <Store className="w-4 h-4 text-sidebar-primary-foreground" />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-semibold text-sidebar-accent-foreground leading-tight">StockFlow</span>
-              <span className="text-[10px] text-sidebar-muted leading-tight">ERP & POS</span>
+              <span className="text-sm font-semibold text-sidebar-accent-foreground leading-tight">AngoPos</span>
+              <span className="text-[10px] text-sidebar-muted leading-tight">Gestão & POS</span>
             </div>
           </div>
         )}

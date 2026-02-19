@@ -16,9 +16,9 @@ export function POSHeader({ searchQuery, onSearchChange, viewMode, onViewModeCha
     <header className="flex items-center gap-4 border-b bg-card px-4 py-2">
       <div className="flex items-center gap-2">
         <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center">
-          <span className="text-primary-foreground font-bold text-sm">SF</span>
+          <span className="text-primary-foreground font-bold text-sm">AP</span>
         </div>
-        <span className="font-semibold text-foreground hidden sm:inline">StockFlow</span>
+        <span className="font-semibold text-foreground hidden sm:inline">AngoPos</span>
       </div>
 
       <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
