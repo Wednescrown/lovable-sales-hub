@@ -1,52 +1,75 @@
+## Melhorias no Modulo de Declaracoes Financeiras
 
+### Resumo das alteracoes
 
-## POS Responsivo Mobile + Prompt para Cursor/Android
+Tres melhorias no painel de Declaracoes do Dia:
 
-### Parte 1: Tornar o POS Responsivo
-
-**O que muda:**
-Em ecras pequenos (menos de 768px), o carrinho lateral de 380px desaparece e e substituido por:
-- Um botao flutuante no canto inferior direito com icone de carrinho, numero de itens e total
-- Ao clicar, abre um drawer (painel inferior deslizante) com todo o conteudo do carrinho
-- O header compacta: esconde info da loja/operador, pesquisa ocupa menos espaco
-- A grelha de produtos passa a 2 colunas em mobile
-
-**Ficheiros a modificar:**
-
-| Ficheiro | Alteracao |
-|---|---|
-| `src/pages/POS.tsx` | Usar `useIsMobile()` para alternar entre layout side-by-side (desktop) e layout com drawer (mobile). Adicionar botao flutuante e drawer do carrinho |
-| `src/components/pos/POSHeader.tsx` | Compactar header em mobile: esconder loja/operador (ja esta com `hidden md:flex`), ajustar pesquisa |
-| `src/components/pos/POSProductGrid.tsx` | Ajustar grid para 2 colunas em mobile (ja tem `grid-cols-2`, esta ok) |
-| `src/components/pos/POSCart.tsx` | Nenhuma alteracao necessaria - o componente ja e flexivel |
-
-**Detalhes da implementacao:**
-- Importar `useIsMobile` de `@/hooks/use-mobile`
-- Importar `Drawer`, `DrawerContent`, `DrawerHeader`, `DrawerTitle` de `@/components/ui/drawer`
-- Em mobile: esconder o `div` do carrinho lateral, mostrar botao flutuante fixo
-- O botao flutuante mostra: icone ShoppingCart + badge com quantidade + total formatado
-- Clicar no botao abre Drawer com POSCart dentro
-- Em desktop: manter layout actual sem alteracoes
+1. **Duas abas no card de Declaracoes**: aba "Declaracao Actual" (formulario) e aba "Historico" (lista de declaracoes passadas)
+2. **Limite de caixa apenas sobre dinheiro (cash)**: a excedencia e calculada so com base no valor em mao, sem incluir TPA nem transferencias
+3. **Campos para TPA e Multicaixa na declaracao**: alem das denominacoes de notas/moedas, o operador pode inserir o valor declarado em TPA e em transferencias Multicaixa
 
 ---
 
-### Parte 2: Prompt para Cursor (Android Nativo)
+### Detalhes
 
-Apos implementar a responsividade, vou fornecer um prompt completo e detalhado para criar o frontend Android nativo no Cursor, incluindo:
-- Toda a estrutura de dados (Product, Category, CartItem)
-- Layout e UI com Material Design 3 / Jetpack Compose
-- Logica do carrinho, pagamento, e navegacao
-- Especificacoes visuais exactas baseadas no POS web actual
+**1. Abas no card de Declaracoes**
 
-O prompt sera entregue como texto na mensagem de implementacao para copiar directamente para o Cursor.
+O card "Declaracao de Abertura" passa a usar o componente `Tabs` com duas abas:
+
+- **Declaracao Actual**: contem o formulario de abertura (denominacoes + campos TPA/Multicaixa + botao declarar). Apos declarar, mostra o resumo read-only
+- **Historico**: mostra uma lista/tabela de declaracoes anteriores (mock data) com data, hora, operador, total cash, TPA, transferencias e estado (Aberto/Fechado)
+
+**2. Excedencia apenas sobre cash**
+
+Actualmente `currentCashInDrawer` soma abertura + vendas cash - pickups. O limite de 50.000 Kz ja se aplica apenas a este valor. Nao ha alteracao de logica aqui -- so garantir que os novos campos de TPA/Multicaixa NAO entram no calculo do limite nem no `currentCashInDrawer`. A barra de limite e o alerta continuam a referir-se apenas ao dinheiro fisico.
+
+**3. Campos TPA e Multicaixa na declaracao**
+
+O formulario de abertura ganha duas seccoes adicionais abaixo do `DenominationPanel`:
+
+- **Valor TPA**: campo numerico para o operador declarar quanto tem em recibos/comprovantes TPA
+- **Valor Multicaixa/Transferencias**: campo numerico para comprovantes de transferencias
+
+O resumo total passa a mostrar tres linhas: Total Cash (das denominacoes), Total TPA, Total Transferencias, e um Gran Total.
 
 ---
 
-### Detalhes Tecnicos
+### Ficheiros a modificar
 
-- Componentes existentes reutilizados: `Drawer` (vaul), `useIsMobile`, `Badge`, `Button`
-- Sem novas dependencias necessarias
-- Breakpoint mobile: 768px (consistente com `use-mobile.tsx`)
-- O drawer usa a biblioteca `vaul` ja instalada no projecto
-- Botao flutuante com `position: fixed`, `bottom-4 right-4`, `z-50`
 
+| Ficheiro                                        | Alteracao                                                                                                                                                       |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/pages/Financas.tsx`                        | Adicionar `Tabs` ao card de declaracoes; novos estados para `tpaAmount` e `multicaixaAmount`; mock data para historico; garantir que limite se aplica so a cash |
+| `src/components/financas/DenominationPanel.tsx` | Sem alteracao                                                                                                                                                   |
+
+
+### Dados mock do historico
+
+Criar um array `mockDeclarationHistory` com 3-4 registos anteriores contendo: id, data, operador, totalCash, totalTpa, totalTransfer, estado.
+
+E as declarações devem ser feitas pelo supervisor ou gerente,  selecionando o operador de caixa , em casos de lojas com mais de 1 operador de caixa
+
+### Estrutura visual das abas
+
+```text
++--------------------------------------------------+
+| Declaracao de Abertura                           |
+| [Declaracao Actual] [Historico]                  |
++--------------------------------------------------+
+| Aba "Declaracao Actual":                         |
+|   Denominacoes (notas/moedas)    Total: X Kz     |
+|   ----------------------------------------       |
+|   Valor TPA:           [________] Kz             |
+|   Valor Multicaixa:    [________] Kz             |
+|   ----------------------------------------       |
+|   Cash: X | TPA: Y | Transf: Z | TOTAL: W       |
+|   [Declarar Abertura -- W Kz]                    |
++--------------------------------------------------+
+| Aba "Historico":                                 |
+|   Data       | Operador | Cash   | TPA   | Est. |
+|   18/02/2026 | Maria    | 25000  | 12000 | Fech.|
+|   17/02/2026 | Joao     | 18000  | 8500  | Fech.|
++--------------------------------------------------+ 
+
+
+```
