@@ -316,6 +316,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      register_company: {
+        Args: {
+          _company_email: string
+          _company_name: string
+          _company_phone?: string
+          _user_id: string
+        }
+        Returns: string
+      }
       set_user_pin: {
         Args: { _pin: string; _profile_id: string }
         Returns: undefined
