@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 import {
   ShieldCheck,
   UserCog,
@@ -22,7 +23,13 @@ import {
   Briefcase,
   Monitor,
   Package,
+  Plus,
+  Pencil,
+  Trash2,
 } from "lucide-react";
+import { AddModuleDialog } from "@/components/funcoes/AddModuleDialog";
+import { RemoveModuleDialog } from "@/components/funcoes/RemoveModuleDialog";
+import { EditRoleDialog } from "@/components/funcoes/EditRoleDialog";
 
 type AppRole = "admin" | "gestor" | "caixeiro" | "gestor_stock";
 
@@ -33,7 +40,7 @@ interface ModulePermission {
   can_access: boolean;
 }
 
-const ROLE_META: Record<AppRole, { label: string; description: string; icon: React.ElementType; color: string }> = {
+const DEFAULT_ROLE_META: Record<AppRole, { label: string; description: string; icon: React.ElementType; color: string }> = {
   admin: {
     label: "Administrador",
     description: "Acesso total ao sistema, gestão de empresa e utilizadores",
@@ -60,23 +67,35 @@ const ROLE_META: Record<AppRole, { label: string; description: string; icon: Rea
   },
 };
 
-const MODULE_LABELS: Record<string, string> = {
-  dashboard: "Dashboard",
-  pos: "Ponto de Venda",
-  products: "Produtos",
-  categories: "Categorias",
-  labels: "Etiquetas",
-  stock_count: "Contagem de Stock",
-  stock_adjustment: "Ajuste de Stock",
-  finances: "Finanças",
-  users: "Utilizadores",
-};
-
 const ROLES: AppRole[] = ["admin", "gestor", "caixeiro", "gestor_stock"];
 
 export default function Funcoes() {
   const queryClient = useQueryClient();
   const [selectedRole, setSelectedRole] = useState<AppRole | null>(null);
+  const [addModuleOpen, setAddModuleOpen] = useState(false);
+  const [removeModule, setRemoveModule] = useState<string | null>(null);
+  const [editRole, setEditRole] = useState<AppRole | null>(null);
+
+  // Local overrides for role metadata (label/description)
+  const [roleOverrides, setRoleOverrides] = useState<Partial<Record<AppRole, { label: string; description: string }>>>({});
+
+  const getRoleMeta = (role: AppRole) => ({
+    ...DEFAULT_ROLE_META[role],
+    ...roleOverrides[role],
+  });
+
+  // Module labels stored locally, seeded from defaults
+  const [moduleLabels, setModuleLabels] = useState<Record<string, string>>({
+    dashboard: "Dashboard",
+    pos: "Ponto de Venda",
+    products: "Produtos",
+    categories: "Categorias",
+    labels: "Etiquetas",
+    stock_count: "Contagem de Stock",
+    stock_adjustment: "Ajuste de Stock",
+    finances: "Finanças",
+    users: "Utilizadores",
+  });
 
   const { data: permissions = [], isLoading } = useQuery({
     queryKey: ["module_permissions"],
@@ -107,6 +126,47 @@ export default function Funcoes() {
     },
   });
 
+  const addModuleMutation = useMutation({
+    mutationFn: async ({ slug, label }: { slug: string; label: string }) => {
+      const rows = ROLES.map((role) => ({
+        module: slug,
+        role,
+        can_access: role === "admin",
+      }));
+      const { error } = await supabase.from("module_permissions").insert(rows);
+      if (error) throw error;
+      return { slug, label };
+    },
+    onSuccess: ({ slug, label }) => {
+      queryClient.invalidateQueries({ queryKey: ["module_permissions"] });
+      setModuleLabels((prev) => ({ ...prev, [slug]: label }));
+      setAddModuleOpen(false);
+      toast.success(`Módulo "${label}" adicionado`);
+    },
+    onError: (err) => {
+      toast.error("Erro ao adicionar módulo: " + (err as Error).message);
+    },
+  });
+
+  const removeModuleMutation = useMutation({
+    mutationFn: async (mod: string) => {
+      const { error } = await supabase
+        .from("module_permissions")
+        .delete()
+        .eq("module", mod);
+      if (error) throw error;
+      return mod;
+    },
+    onSuccess: (mod) => {
+      queryClient.invalidateQueries({ queryKey: ["module_permissions"] });
+      setRemoveModule(null);
+      toast.success(`Módulo "${moduleLabels[mod] ?? mod}" removido`);
+    },
+    onError: (err) => {
+      toast.error("Erro ao remover módulo: " + (err as Error).message);
+    },
+  });
+
   const modules = [...new Set(permissions.map((p) => p.module))];
 
   const getRolePermissions = (role: AppRole) =>
@@ -118,20 +178,26 @@ export default function Funcoes() {
   return (
     <AppLayout>
       <div className="p-4 md:p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <ShieldCheck className="w-6 h-6 text-primary" />
-            Funções & Permissões
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Gerir cargos e controlar acesso aos módulos do sistema
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+              <ShieldCheck className="w-6 h-6 text-primary" />
+              Funções & Permissões
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Gerir cargos e controlar acesso aos módulos do sistema
+            </p>
+          </div>
+          <Button onClick={() => setAddModuleOpen(true)}>
+            <Plus className="w-4 h-4" />
+            Adicionar Módulo
+          </Button>
         </div>
 
         {/* Role Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {ROLES.map((role) => {
-            const meta = ROLE_META[role];
+            const meta = getRoleMeta(role);
             const Icon = meta.icon;
             const rolePerms = getRolePermissions(role);
             const activeModules = rolePerms.filter((p) => p.can_access).length;
@@ -146,11 +212,26 @@ export default function Funcoes() {
                 onClick={() => setSelectedRole(isSelected ? null : role)}
               >
                 <CardHeader className="pb-2">
-                  <div className="flex items-center gap-2">
-                    <div className={`p-2 rounded-lg ${meta.color}`}>
-                      <Icon className="w-4 h-4" />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={`p-2 rounded-lg ${meta.color}`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <CardTitle className="text-sm">{meta.label}</CardTitle>
                     </div>
-                    <CardTitle className="text-sm">{meta.label}</CardTitle>
+                    {role !== "admin" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditRole(role);
+                        }}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                   </div>
                   <CardDescription className="text-xs mt-1">
                     {meta.description}
@@ -173,7 +254,7 @@ export default function Funcoes() {
             <CardTitle className="text-base flex items-center gap-2">
               <UserCog className="w-4 h-4" />
               {selectedRole
-                ? `Permissões — ${ROLE_META[selectedRole].label}`
+                ? `Permissões — ${getRoleMeta(selectedRole).label}`
                 : "Matriz de Permissões"}
             </CardTitle>
             <CardDescription className="text-xs">
@@ -186,7 +267,6 @@ export default function Funcoes() {
             {isLoading ? (
               <p className="text-sm text-muted-foreground text-center py-10">A carregar...</p>
             ) : selectedRole ? (
-              /* Single role editing view */
               <div className="space-y-3">
                 {modules.map((mod) => {
                   const perm = getPermission(selectedRole, mod);
@@ -196,16 +276,26 @@ export default function Funcoes() {
                       key={mod}
                       className="flex items-center justify-between p-3 rounded-lg border bg-card"
                     >
-                      <div>
-                        <p className="text-sm font-medium">{MODULE_LABELS[mod] ?? mod}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">{moduleLabels[mod] ?? mod}</p>
                       </div>
-                      <Switch
-                        checked={perm.can_access}
-                        disabled={selectedRole === "admin"}
-                        onCheckedChange={(checked) =>
-                          togglePermission.mutate({ id: perm.id, can_access: checked })
-                        }
-                      />
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:text-destructive"
+                          onClick={() => setRemoveModule(mod)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                        <Switch
+                          checked={perm.can_access}
+                          disabled={selectedRole === "admin"}
+                          onCheckedChange={(checked) =>
+                            togglePermission.mutate({ id: perm.id, can_access: checked })
+                          }
+                        />
+                      </div>
                     </div>
                   );
                 })}
@@ -216,7 +306,6 @@ export default function Funcoes() {
                 )}
               </div>
             ) : (
-              /* Full matrix view */
               <ScrollArea className="w-full">
                 <Table>
                   <TableHeader>
@@ -224,8 +313,8 @@ export default function Funcoes() {
                       <TableHead>Módulo</TableHead>
                       {ROLES.map((role) => (
                         <TableHead key={role} className="text-center">
-                          <Badge variant="outline" className={ROLE_META[role].color}>
-                            {ROLE_META[role].label}
+                          <Badge variant="outline" className={getRoleMeta(role).color}>
+                            {getRoleMeta(role).label}
                           </Badge>
                         </TableHead>
                       ))}
@@ -235,7 +324,7 @@ export default function Funcoes() {
                     {modules.map((mod) => (
                       <TableRow key={mod}>
                         <TableCell className="font-medium">
-                          {MODULE_LABELS[mod] ?? mod}
+                          {moduleLabels[mod] ?? mod}
                         </TableCell>
                         {ROLES.map((role) => {
                           const perm = getPermission(role, mod);
@@ -264,6 +353,39 @@ export default function Funcoes() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Dialogs */}
+      <AddModuleDialog
+        open={addModuleOpen}
+        onOpenChange={setAddModuleOpen}
+        onConfirm={(slug, label) => addModuleMutation.mutate({ slug, label })}
+        isPending={addModuleMutation.isPending}
+      />
+
+      <RemoveModuleDialog
+        open={!!removeModule}
+        onOpenChange={(open) => !open && setRemoveModule(null)}
+        moduleName={removeModule ? (moduleLabels[removeModule] ?? removeModule) : ""}
+        onConfirm={() => removeModule && removeModuleMutation.mutate(removeModule)}
+        isPending={removeModuleMutation.isPending}
+      />
+
+      {editRole && (
+        <EditRoleDialog
+          open={!!editRole}
+          onOpenChange={(open) => !open && setEditRole(null)}
+          roleLabel={getRoleMeta(editRole).label}
+          roleDescription={getRoleMeta(editRole).description}
+          onSave={(label, description) => {
+            setRoleOverrides((prev) => ({
+              ...prev,
+              [editRole]: { label, description },
+            }));
+            setEditRole(null);
+            toast.success("Cargo actualizado");
+          }}
+        />
+      )}
     </AppLayout>
   );
 }
