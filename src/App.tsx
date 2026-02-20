@@ -12,6 +12,7 @@ import POS from "./pages/POS";
 import Financas from "./pages/Financas";
 import Labels from "./pages/Labels";
 import Users from "./pages/Users";
+import Funcoes from "./pages/Funcoes";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
           <Route path="/declaracao" element={<Financas />} />
           <Route path="/etiquetas" element={<Labels />} />
           <Route path="/usuarios" element={<Users />} />
+          <Route path="/funcoes" element={<Funcoes />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
