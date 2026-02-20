@@ -145,14 +145,12 @@ export default function UserSelect() {
           </CardContent>
         </Card>
 
-        {isAdmin && (
-          <div className="mt-4 text-center">
-            <Button variant="ghost" size="sm" onClick={closeCompany} className="text-destructive hover:text-destructive">
-              <LogOut className="w-4 h-4 mr-1" />
-              Fechar Empresa
-            </Button>
-          </div>
-        )}
+        <div className="mt-4 text-center">
+          <Button variant="ghost" size="sm" onClick={closeCompany} className="text-destructive hover:text-destructive">
+            <LogOut className="w-4 h-4 mr-1" />
+            Fechar Empresa
+          </Button>
+        </div>
 
         <Dialog open={!!selectedProfile} onOpenChange={(open) => !open && setSelectedProfile(null)}>
           <DialogContent className="sm:max-w-sm">
