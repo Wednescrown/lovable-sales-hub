@@ -34,9 +34,13 @@ import {
   Store,
   Menu,
   X,
+  LogOut,
+  RefreshCw,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface MenuItem {
   title: string;
@@ -138,6 +142,7 @@ const menuGroups: MenuGroup[] = [
 
 export function AppSidebar() {
   const location = useLocation();
+  const { activeUser, isAdmin, switchUser, closeCompany } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
@@ -145,7 +150,6 @@ export function AppSidebar() {
       const isActive = group.items.some((item) => item.url === location.pathname);
       if (isActive) initial[group.label] = true;
     });
-    // Always open Dashboard by default
     initial["Dashboard"] = true;
     return initial;
   });
@@ -153,6 +157,9 @@ export function AppSidebar() {
   const toggleGroup = (label: string) => {
     setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
   };
+
+  const getInitials = (name: string) =>
+    name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
 
   return (
     <aside
@@ -232,17 +239,44 @@ export function AppSidebar() {
         })}
       </nav>
 
-      {/* Footer */}
+      {/* Footer with user info and actions */}
       {!collapsed && (
-        <div className="p-3 border-t border-sidebar-border shrink-0">
+        <div className="p-3 border-t border-sidebar-border shrink-0 space-y-2">
+          {/* Active user */}
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-sidebar-accent flex items-center justify-center">
-              <UserCircle className="w-4 h-4 text-sidebar-foreground" />
+            <Avatar className="w-7 h-7">
+              <AvatarImage src={activeUser?.avatar_url || undefined} />
+              <AvatarFallback className="bg-sidebar-accent text-sidebar-foreground text-[10px]">
+                {activeUser ? getInitials(activeUser.full_name) : <UserCircle className="w-4 h-4" />}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col flex-1 min-w-0">
+              <span className="text-xs font-medium text-sidebar-accent-foreground truncate">
+                {activeUser?.display_name || activeUser?.full_name || "Utilizador"}
+              </span>
             </div>
-            <div className="flex flex-col">
-              <span className="text-xs font-medium text-sidebar-accent-foreground">Admin</span>
-              <span className="text-[10px] text-sidebar-muted">admin@empresa.co.ao</span>
-            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-1">
+            <button
+              onClick={switchUser}
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-[10px] text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+              title="Trocar Utilizador"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>Trocar</span>
+            </button>
+            {isAdmin && (
+              <button
+                onClick={closeCompany}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-[10px] text-destructive hover:bg-sidebar-accent transition-colors"
+                title="Fechar Empresa"
+              >
+                <LogOut className="w-3 h-3" />
+                <span>Fechar</span>
+              </button>
+            )}
           </div>
         </div>
       )}

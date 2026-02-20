@@ -171,6 +171,7 @@ export type Database = {
           id: string
           is_active: boolean
           phone: string | null
+          pin: string | null
           updated_at: string
           user_id: string
         }
@@ -184,6 +185,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           phone?: string | null
+          pin?: string | null
           updated_at?: string
           user_id: string
         }
@@ -197,6 +199,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           phone?: string | null
+          pin?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -271,6 +274,14 @@ export type Database = {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      set_user_pin: {
+        Args: { _pin: string; _profile_id: string }
+        Returns: undefined
+      }
+      validate_user_pin: {
+        Args: { _pin: string; _profile_id: string }
         Returns: boolean
       }
     }

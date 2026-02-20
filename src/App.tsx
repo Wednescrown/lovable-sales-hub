@@ -3,6 +3,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import CompanyLogin from "./pages/auth/CompanyLogin";
+import UserSelect from "./pages/auth/UserSelect";
 import Index from "./pages/Index";
 import Products from "./pages/Products";
 import Categories from "./pages/Categories";
@@ -24,21 +28,27 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/produtos" element={<Products />} />
-          <Route path="/categorias" element={<Categories />} />
-          <Route path="/inventario" element={<StockAdjustment />} />
-          <Route path="/contagem-inventario" element={<StockCount />} />
-          <Route path="/pos" element={<POS />} />
-          <Route path="/declaracao" element={<Financas />} />
-          <Route path="/etiquetas" element={<Labels />} />
-          <Route path="/usuarios" element={<Users />} />
-          <Route path="/funcoes" element={<Funcoes />} />
-          <Route path="/filiais" element={<Branches />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            {/* Public auth routes */}
+            <Route path="/auth/company" element={<CompanyLogin />} />
+            <Route path="/auth/user-select" element={<UserSelect />} />
+
+            {/* Protected routes */}
+            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+            <Route path="/produtos" element={<ProtectedRoute><Products /></ProtectedRoute>} />
+            <Route path="/categorias" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
+            <Route path="/inventario" element={<ProtectedRoute><StockAdjustment /></ProtectedRoute>} />
+            <Route path="/contagem-inventario" element={<ProtectedRoute><StockCount /></ProtectedRoute>} />
+            <Route path="/pos" element={<ProtectedRoute><POS /></ProtectedRoute>} />
+            <Route path="/declaracao" element={<ProtectedRoute><Financas /></ProtectedRoute>} />
+            <Route path="/etiquetas" element={<ProtectedRoute><Labels /></ProtectedRoute>} />
+            <Route path="/usuarios" element={<ProtectedRoute><Users /></ProtectedRoute>} />
+            <Route path="/funcoes" element={<ProtectedRoute><Funcoes /></ProtectedRoute>} />
+            <Route path="/filiais" element={<ProtectedRoute><Branches /></ProtectedRoute>} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
