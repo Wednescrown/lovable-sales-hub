@@ -31,7 +31,10 @@ export default function UserSelect() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!companyId) return;
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
 
     const fetchProfiles = async () => {
       const { data, error } = await supabase
