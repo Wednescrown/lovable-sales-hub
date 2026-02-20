@@ -1,29 +1,40 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Store, Loader2, AlertCircle } from "lucide-react";
+import { Store, Loader2, AlertCircle, Building2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Navigate } from "react-router-dom";
 
 export default function CompanyLogin() {
   const { isCompanyAuthenticated, isUserSelected } = useAuth();
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const navigate = useNavigate();
 
-  // If already authenticated, redirect
-  if (isCompanyAuthenticated && isUserSelected) {
-    return <Navigate to="/" replace />;
-  }
-  if (isCompanyAuthenticated) {
-    return <Navigate to="/auth/user-select" replace />;
-  }
+  if (isCompanyAuthenticated && isUserSelected) return <Navigate to="/" replace />;
+  if (isCompanyAuthenticated) return <Navigate to="/auth/user-select" replace />;
+
+  const resetForm = () => {
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
+    setCompanyName("");
+    setFullName("");
+    setPhone("");
+    setError("");
+    setSuccess("");
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,21 +42,103 @@ export default function CompanyLogin() {
     setLoading(true);
 
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError) {
+        setError(authError.message === "Invalid login credentials" ? "Email ou senha incorrectos" : authError.message);
+        return;
+      }
+      navigate("/auth/user-select");
+    } catch {
+      setError("Erro inesperado. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (password.length < 6) {
+      setError("A senha deve ter pelo menos 6 caracteres");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("As senhas não coincidem");
+      return;
+    }
+    if (companyName.trim().length < 2) {
+      setError("O nome da empresa deve ter pelo menos 2 caracteres");
+      return;
+    }
+    if (fullName.trim().length < 2) {
+      setError("O nome do administrador deve ter pelo menos 2 caracteres");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          emailRedirectTo: window.location.origin,
+          data: {
+            full_name: fullName.trim(),
+            display_name: fullName.trim().split(" ")[0],
+          },
+        },
       });
 
-      if (authError) {
-        setError(
-          authError.message === "Invalid login credentials"
-            ? "Email ou senha incorrectos"
-            : authError.message
-        );
+      if (signUpError) {
+        setError(signUpError.message);
         return;
       }
 
-      navigate("/auth/user-select");
+      if (!signUpData.user) {
+        setError("Erro ao criar conta. Tente novamente.");
+        return;
+      }
+
+      // Create the company
+      const { data: company, error: companyError } = await supabase
+        .from("companies" as any)
+        .insert({
+          name: companyName.trim(),
+          email: email.trim(),
+          phone: phone.trim() || null,
+        })
+        .select("id")
+        .single();
+
+      if (companyError) {
+        setError("Conta criada, mas erro ao registar empresa: " + companyError.message);
+        return;
+      }
+
+      // Update the profile with company_id
+      const companyId = (company as any).id;
+      await supabase
+        .from("profiles")
+        .update({ company_id: companyId })
+        .eq("user_id", signUpData.user.id);
+
+      // Upgrade role to admin
+      await supabase
+        .from("user_roles")
+        .update({ role: "admin" as any })
+        .eq("user_id", signUpData.user.id);
+
+      setSuccess("Empresa registada com sucesso! Verifique o seu email para confirmar a conta, ou faça login directamente.");
+      setMode("login");
+      setEmail(email);
+      setPassword("");
+      setConfirmPassword("");
+      setCompanyName("");
+      setFullName("");
+      setPhone("");
     } catch {
       setError("Erro inesperado. Tente novamente.");
     } finally {
@@ -56,7 +149,7 @@ export default function CompanyLogin() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
-        {/* Logo / Brand */}
+        {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg">
             <Store className="w-8 h-8 text-primary-foreground" />
@@ -67,62 +160,99 @@ export default function CompanyLogin() {
 
         <Card className="border-border shadow-xl">
           <CardHeader className="text-center pb-4">
-            <CardTitle className="text-lg">Abrir Empresa</CardTitle>
+            <CardTitle className="text-lg">
+              {mode === "login" ? "Abrir Empresa" : "Registar Nova Empresa"}
+            </CardTitle>
             <CardDescription>
-              Introduza as credenciais da empresa para iniciar a sessão neste dispositivo
+              {mode === "login"
+                ? "Introduza as credenciais da empresa para iniciar a sessão"
+                : "Preencha os dados para criar uma nova empresa"}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleLogin} className="space-y-4">
-              {error && (
-                <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Email da Empresa</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="empresa@exemplo.co.ao"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                />
-              </div>
-
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    A entrar...
-                  </>
-                ) : (
-                  "Entrar"
+            {mode === "login" ? (
+              <form onSubmit={handleLogin} className="space-y-4">
+                {error && (
+                  <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
                 )}
-              </Button>
-            </form>
+                {success && (
+                  <div className="flex items-center gap-2 p-3 rounded-md bg-primary/10 text-primary text-sm">
+                    <Store className="w-4 h-4 shrink-0" />
+                    <span>{success}</span>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email da Empresa</Label>
+                  <Input id="email" type="email" placeholder="empresa@exemplo.co.ao" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Senha</Label>
+                  <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? <><Loader2 className="w-4 h-4 animate-spin" />A entrar...</> : "Entrar"}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={handleRegister} className="space-y-4">
+                {error && (
+                  <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="companyName">Nome da Empresa</Label>
+                  <Input id="companyName" type="text" placeholder="Minha Empresa Lda." value={companyName} onChange={(e) => setCompanyName(e.target.value)} required maxLength={100} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Nome do Administrador</Label>
+                  <Input id="fullName" type="text" placeholder="João Silva" value={fullName} onChange={(e) => setFullName(e.target.value)} required maxLength={100} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="regEmail">Email</Label>
+                  <Input id="regEmail" type="email" placeholder="empresa@exemplo.co.ao" value={email} onChange={(e) => setEmail(e.target.value)} required maxLength={255} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Telefone (opcional)</Label>
+                  <Input id="phone" type="tel" placeholder="+244 9XX XXX XXX" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={20} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="regPassword">Senha</Label>
+                  <Input id="regPassword" type="password" placeholder="Mínimo 6 caracteres" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete="new-password" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirmar Senha</Label>
+                  <Input id="confirmPassword" type="password" placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required autoComplete="new-password" />
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? <><Loader2 className="w-4 h-4 animate-spin" />A registar...</> : <><Building2 className="w-4 h-4" />Registar Empresa</>}
+                </Button>
+              </form>
+            )}
+
+            {/* Toggle mode */}
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() => { setMode(mode === "login" ? "register" : "login"); resetForm(); }}
+                className="text-sm text-primary hover:underline"
+              >
+                {mode === "login" ? "Não tem empresa? Registar nova empresa" : "Já tem empresa? Fazer login"}
+              </button>
+            </div>
           </CardContent>
         </Card>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          A sessão da empresa fica guardada neste dispositivo
+          {mode === "login"
+            ? "A sessão da empresa fica guardada neste dispositivo"
+            : "Ao registar, será criado o primeiro utilizador como administrador"}
         </p>
       </div>
     </div>
