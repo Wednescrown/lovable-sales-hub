@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Package,
   ShoppingCart,
+  Tag,
   DollarSign,
   BarChart3,
   Users,
@@ -63,6 +64,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { title: "Produtos", url: "/produtos", icon: Package },
       { title: "Categorias", url: "/categorias", icon: Layers },
+      { title: "Etiquetas", url: "/etiquetas", icon: Tag },
       { title: "Inventário", url: "/inventario", icon: ClipboardList },
       { title: "Contagem Geral", url: "/contagem-inventario", icon: ClipboardCheck },
       { title: "Movimentação", url: "/movimentacao", icon: ArrowRightLeft },
