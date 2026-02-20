@@ -100,6 +100,7 @@ export default function Users() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [editDialog, setEditDialog] = useState(false);
+  const [inviteDialog, setInviteDialog] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
   const [formData, setFormData] = useState({
@@ -109,6 +110,14 @@ export default function Users() {
     role: "caixeiro" as AppRole,
     is_active: true,
   });
+  const [inviteData, setInviteData] = useState({
+    email: "",
+    full_name: "",
+    display_name: "",
+    phone: "",
+    role: "caixeiro" as AppRole,
+  });
+  const [isInviting, setIsInviting] = useState(false);
 
   // Fetch profiles
   const { data: profiles = [], isLoading } = useQuery({
@@ -245,6 +254,40 @@ export default function Users() {
     });
   };
 
+  const handleInvite = async () => {
+    if (!inviteData.email || !inviteData.full_name) {
+      toast.error("Email e nome completo são obrigatórios");
+      return;
+    }
+    setIsInviting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify(inviteData),
+        }
+      );
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+      toast.success("Utilizador criado com sucesso");
+      setInviteDialog(false);
+      setInviteData({ email: "", full_name: "", display_name: "", phone: "", role: "caixeiro" });
+      queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["user_roles"] });
+    } catch (err) {
+      toast.error("Erro ao convidar: " + (err as Error).message);
+    } finally {
+      setIsInviting(false);
+    }
+  };
+
   const activeCount = profiles.filter((p) => p.is_active).length;
   const inactiveCount = profiles.filter((p) => !p.is_active).length;
 
@@ -258,6 +301,10 @@ export default function Users() {
               Gerir utilizadores, cargos e permissões da empresa
             </p>
           </div>
+          <Button onClick={() => setInviteDialog(true)} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Novo Utilizador
+          </Button>
         </div>
 
         {/* KPI Cards */}
@@ -520,6 +567,71 @@ export default function Users() {
               </Button>
               <Button onClick={handleSave} disabled={updateProfile.isPending}>
                 {updateProfile.isPending ? "A guardar..." : "Guardar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        {/* Invite Dialog */}
+        <Dialog open={inviteDialog} onOpenChange={setInviteDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Novo Utilizador</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Email *</Label>
+                <Input
+                  type="email"
+                  placeholder="email@exemplo.com"
+                  value={inviteData.email}
+                  onChange={(e) => setInviteData((f) => ({ ...f, email: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Nome Completo *</Label>
+                <Input
+                  value={inviteData.full_name}
+                  onChange={(e) => setInviteData((f) => ({ ...f, full_name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Nome de Exibição</Label>
+                <Input
+                  value={inviteData.display_name}
+                  onChange={(e) => setInviteData((f) => ({ ...f, display_name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Telefone</Label>
+                <Input
+                  value={inviteData.phone}
+                  onChange={(e) => setInviteData((f) => ({ ...f, phone: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Cargo</Label>
+                <Select
+                  value={inviteData.role}
+                  onValueChange={(v) => setInviteData((f) => ({ ...f, role: v as AppRole }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Administrador</SelectItem>
+                    <SelectItem value="gestor">Gestor</SelectItem>
+                    <SelectItem value="caixeiro">Caixeiro</SelectItem>
+                    <SelectItem value="gestor_stock">Gestor de Stock</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setInviteDialog(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleInvite} disabled={isInviting}>
+                {isInviting ? "A criar..." : "Criar Utilizador"}
               </Button>
             </DialogFooter>
           </DialogContent>
