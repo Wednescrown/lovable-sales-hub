@@ -2,16 +2,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Search, LayoutGrid, List, LogOut, Store, User } from "lucide-react";
-import { Link } from "react-router-dom";
 
 interface POSHeaderProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   viewMode: "grid" | "list";
   onViewModeChange: (mode: "grid" | "list") => void;
+  onPanelClick?: () => void;
 }
 
-export function POSHeader({ searchQuery, onSearchChange, viewMode, onViewModeChange }: POSHeaderProps) {
+export function POSHeader({ searchQuery, onSearchChange, viewMode, onViewModeChange, onPanelClick }: POSHeaderProps) {
   return (
     <header className="flex items-center gap-4 border-b bg-card px-4 py-2">
       <div className="flex items-center gap-2">
@@ -60,11 +60,9 @@ export function POSHeader({ searchQuery, onSearchChange, viewMode, onViewModeCha
         </Button>
       </div>
 
-      <Button variant="outline" size="sm" asChild>
-        <Link to="/">
+      <Button variant="outline" size="sm" onClick={onPanelClick}>
           <LogOut className="h-4 w-4 mr-1" />
           Painel
-        </Link>
       </Button>
     </header>
   );

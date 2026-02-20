@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import {
   Package,
@@ -6,11 +6,13 @@ import {
   Plus,
   Filter,
   Download,
+  Upload,
   AlertTriangle,
   Edit,
   Trash2,
   Barcode,
   Eye,
+  ShoppingCart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +48,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useToast } from "@/hooks/use-toast";
 import { mockProducts, mockCategories, type Product } from "@/data/mockProducts";
 
 function formatKz(value: number) {
@@ -53,12 +56,17 @@ function formatKz(value: number) {
 }
 
 const Products = () => {
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importData, setImportData] = useState<string[][]>([]);
+  const [shoppingList, setShoppingList] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -94,38 +102,41 @@ const Products = () => {
 
   const openCreateForm = () => {
     setEditProduct(null);
-    setFormData({
-      name: "",
-      sku: "",
-      barcode: "",
-      categoryId: "",
-      subcategoryId: "",
-      costPrice: "",
-      sellPrice: "",
-      stock: "",
-      minStock: "",
-      packSize: "",
-      unit: "un",
-    });
+    setFormData({ name: "", sku: "", barcode: "", categoryId: "", subcategoryId: "", costPrice: "", sellPrice: "", stock: "", minStock: "", packSize: "", unit: "un" });
     setFormOpen(true);
   };
 
   const openEditForm = (product: Product) => {
     setEditProduct(product);
     setFormData({
-      name: product.name,
-      sku: product.sku,
-      barcode: product.barcode,
-      categoryId: product.categoryId,
-      subcategoryId: product.subcategoryId,
-      costPrice: product.costPrice.toString(),
-      sellPrice: product.sellPrice.toString(),
-      stock: product.stock.toString(),
-      minStock: product.minStock.toString(),
-      packSize: product.packSize.toString(),
-      unit: product.unit,
+      name: product.name, sku: product.sku, barcode: product.barcode, categoryId: product.categoryId,
+      subcategoryId: product.subcategoryId, costPrice: product.costPrice.toString(), sellPrice: product.sellPrice.toString(),
+      stock: product.stock.toString(), minStock: product.minStock.toString(), packSize: product.packSize.toString(), unit: product.unit,
     });
     setFormOpen(true);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      const rows = text.split("\n").filter(Boolean).map((row) => row.split(/[,;\t]/));
+      setImportData(rows);
+      setImportOpen(true);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const addToShoppingList = (productId: string, productName: string) => {
+    if (shoppingList.includes(productId)) {
+      toast({ title: "Já na lista", description: `${productName} já está na lista de compras.` });
+      return;
+    }
+    setShoppingList((prev) => [...prev, productId]);
+    toast({ title: "Adicionado", description: `${productName} adicionado à lista de compras.` });
   };
 
   return (
@@ -143,6 +154,23 @@ const Products = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {shoppingList.length > 0 && (
+              <Badge variant="secondary" className="gap-1">
+                <ShoppingCart className="w-3 h-3" />
+                {shoppingList.length}
+              </Badge>
+            )}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".csv,.xls,.xlsx"
+              className="hidden"
+              onChange={handleFileUpload}
+            />
+            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+              <Upload className="w-4 h-4 mr-1" />
+              Importar
+            </Button>
             <Button variant="outline" size="sm">
               <Download className="w-4 h-4 mr-1" />
               Exportar
@@ -212,9 +240,7 @@ const Products = () => {
                 <SelectContent>
                   <SelectItem value="all">Todas Categorias</SelectItem>
                   {mockCategories.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </SelectItem>
+                    <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -229,14 +255,8 @@ const Products = () => {
                 </SelectContent>
               </Select>
               <div className="flex items-center gap-2">
-                <Checkbox
-                  id="lowStock"
-                  checked={lowStockOnly}
-                  onCheckedChange={(v) => setLowStockOnly(v === true)}
-                />
-                <label htmlFor="lowStock" className="text-xs text-muted-foreground cursor-pointer">
-                  Apenas estoque baixo
-                </label>
+                <Checkbox id="lowStock" checked={lowStockOnly} onCheckedChange={(v) => setLowStockOnly(v === true)} />
+                <label htmlFor="lowStock" className="text-xs text-muted-foreground cursor-pointer">Apenas estoque baixo</label>
               </div>
             </div>
           </CardContent>
@@ -245,9 +265,7 @@ const Products = () => {
         {/* Table */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">
-              Produtos ({filteredProducts.length})
-            </CardTitle>
+            <CardTitle className="text-sm font-semibold">Produtos ({filteredProducts.length})</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -262,7 +280,7 @@ const Products = () => {
                   <TableHead className="text-right">Venda</TableHead>
                   <TableHead className="text-center">Estoque</TableHead>
                   <TableHead className="text-center">Status</TableHead>
-                  <TableHead className="text-center w-[100px]">Ações</TableHead>
+                  <TableHead className="text-center w-[130px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -276,16 +294,12 @@ const Products = () => {
                         </div>
                         <div>
                           <p className="text-sm font-medium text-foreground">{product.name}</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            Pack: {product.packSize} {product.unit}
-                          </p>
+                          <p className="text-[10px] text-muted-foreground">Pack: {product.packSize} {product.unit}</p>
                         </div>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">
-                        {product.sku}
-                      </code>
+                      <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">{product.sku}</code>
                     </TableCell>
                     <TableCell>
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -303,9 +317,7 @@ const Products = () => {
                     <TableCell className="text-right text-xs font-medium">{formatKz(product.sellPrice)}</TableCell>
                     <TableCell className="text-center">
                       <div className="flex flex-col items-center">
-                        <span className={`text-sm font-bold ${product.lowStock ? "text-destructive" : "text-foreground"}`}>
-                          {product.stock}
-                        </span>
+                        <span className={`text-sm font-bold ${product.lowStock ? "text-destructive" : "text-foreground"}`}>{product.stock}</span>
                         {product.lowStock && (
                           <span className="text-[9px] text-destructive flex items-center gap-0.5">
                             <AlertTriangle className="w-2.5 h-2.5" />
@@ -317,24 +329,24 @@ const Products = () => {
                     <TableCell className="text-center">
                       <Badge
                         variant={product.status === "active" ? "default" : "secondary"}
-                        className={`text-[10px] ${
-                          product.status === "active"
-                            ? "bg-success/15 text-success border-success/30"
-                            : "bg-muted text-muted-foreground"
-                        }`}
+                        className={`text-[10px] ${product.status === "active" ? "bg-success/15 text-success border-success/30" : "bg-muted text-muted-foreground"}`}
                       >
                         {product.status === "active" ? "Ativo" : "Inativo"}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center gap-1">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditForm(product)}>
+                          <Edit className="w-3.5 h-3.5" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7"
-                          onClick={() => openEditForm(product)}
+                          className={`h-7 w-7 ${shoppingList.includes(product.id) ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
+                          onClick={() => addToShoppingList(product.id, product.name)}
+                          title="Enviar para Lista de Compras"
                         >
-                          <Edit className="w-3.5 h-3.5" />
+                          <ShoppingCart className="w-3.5 h-3.5" />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive">
                           <Trash2 className="w-3.5 h-3.5" />
@@ -345,9 +357,7 @@ const Products = () => {
                 ))}
                 {filteredProducts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">
-                      Nenhum produto encontrado.
-                    </TableCell>
+                    <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">Nenhum produto encontrado.</TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -363,185 +373,86 @@ const Products = () => {
                 <Package className="w-5 h-5 text-primary" />
                 {editProduct ? "Editar Produto" : "Cadastrar Novo Produto"}
               </DialogTitle>
-              <DialogDescription>
-                Preencha as informações do produto abaixo.
-              </DialogDescription>
+              <DialogDescription>Preencha as informações do produto abaixo.</DialogDescription>
             </DialogHeader>
 
             <div className="grid gap-4 py-2">
-              {/* Name */}
               <div className="grid gap-1.5">
                 <Label htmlFor="name" className="text-xs">Nome do Produto *</Label>
-                <Input
-                  id="name"
-                  placeholder="Ex: Coca-Cola 350ml"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="h-9"
-                />
+                <Input id="name" placeholder="Ex: Coca-Cola 350ml" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="h-9" />
               </div>
 
-              {/* SKU + Barcode */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-1.5">
                   <Label htmlFor="sku" className="text-xs">SKU *</Label>
-                  <Input
-                    id="sku"
-                    placeholder="Ex: BEB-CC-350"
-                    value={formData.sku}
-                    onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                    className="h-9 font-mono"
-                  />
+                  <Input id="sku" placeholder="Ex: BEB-CC-350" value={formData.sku} onChange={(e) => setFormData({ ...formData, sku: e.target.value })} className="h-9 font-mono" />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="barcode" className="text-xs flex items-center gap-1">
-                    <BarCode className="w-3 h-3" />
-                    Código de Barras *
-                  </Label>
-                  <Input
-                    id="barcode"
-                    placeholder="Ex: 7891234560012"
-                    value={formData.barcode}
-                    onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                    className="h-9 font-mono"
-                  />
+                  <Label htmlFor="barcode" className="text-xs flex items-center gap-1"><BarCode className="w-3 h-3" />Código de Barras *</Label>
+                  <Input id="barcode" placeholder="Ex: 7891234560012" value={formData.barcode} onChange={(e) => setFormData({ ...formData, barcode: e.target.value })} className="h-9 font-mono" />
                 </div>
               </div>
 
-              {/* Category + Subcategory */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-1.5">
                   <Label className="text-xs">Categoria *</Label>
-                  <Select
-                    value={formData.categoryId}
-                    onValueChange={(v) =>
-                      setFormData({ ...formData, categoryId: v, subcategoryId: "" })
-                    }
-                  >
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="Selecionar categoria" />
-                    </SelectTrigger>
+                  <Select value={formData.categoryId} onValueChange={(v) => setFormData({ ...formData, categoryId: v, subcategoryId: "" })}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Selecionar categoria" /></SelectTrigger>
                     <SelectContent>
-                      {mockCategories.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
+                      {mockCategories.map((cat) => (<SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="grid gap-1.5">
                   <Label className="text-xs">Subcategoria *</Label>
-                  <Select
-                    value={formData.subcategoryId}
-                    onValueChange={(v) => setFormData({ ...formData, subcategoryId: v })}
-                    disabled={!formData.categoryId}
-                  >
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="Selecionar subcategoria" />
-                    </SelectTrigger>
+                  <Select value={formData.subcategoryId} onValueChange={(v) => setFormData({ ...formData, subcategoryId: v })} disabled={!formData.categoryId}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Selecionar subcategoria" /></SelectTrigger>
                     <SelectContent>
-                      {selectedCategory?.subcategories.map((sub) => (
-                        <SelectItem key={sub.id} value={sub.id}>
-                          {sub.name}
-                        </SelectItem>
-                      ))}
+                      {selectedCategory?.subcategories.map((sub) => (<SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
-              {/* Prices */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-1.5">
                   <Label htmlFor="costPrice" className="text-xs">Preço de Custo (Kz) *</Label>
-                  <Input
-                    id="costPrice"
-                    type="number"
-                    placeholder="0"
-                    value={formData.costPrice}
-                    onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
-                    className="h-9"
-                  />
+                  <Input id="costPrice" type="number" placeholder="0" value={formData.costPrice} onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })} className="h-9" />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="sellPrice" className="text-xs">Preço de Venda (Kz) *</Label>
-                  <Input
-                    id="sellPrice"
-                    type="number"
-                    placeholder="0"
-                    value={formData.sellPrice}
-                    onChange={(e) => setFormData({ ...formData, sellPrice: e.target.value })}
-                    className="h-9"
-                  />
+                  <Input id="sellPrice" type="number" placeholder="0" value={formData.sellPrice} onChange={(e) => setFormData({ ...formData, sellPrice: e.target.value })} className="h-9" />
                 </div>
               </div>
 
-              {/* Margin display */}
               {formData.costPrice && formData.sellPrice && Number(formData.costPrice) > 0 && (
                 <div className="bg-muted/50 rounded-md px-3 py-2 text-xs">
                   <span className="text-muted-foreground">Margem de lucro: </span>
                   <span className="font-semibold text-success">
-                    {(
-                      ((Number(formData.sellPrice) - Number(formData.costPrice)) /
-                        Number(formData.costPrice)) *
-                      100
-                    ).toFixed(1)}
-                    %
+                    {(((Number(formData.sellPrice) - Number(formData.costPrice)) / Number(formData.costPrice)) * 100).toFixed(1)}%
                   </span>
                 </div>
               )}
 
-              {/* Stock + Min Stock + Pack */}
               <div className="grid grid-cols-3 gap-4">
                 <div className="grid gap-1.5">
                   <Label htmlFor="stock" className="text-xs">Estoque Inicial</Label>
-                  <Input
-                    id="stock"
-                    type="number"
-                    placeholder="0"
-                    value={formData.stock}
-                    onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                    className="h-9"
-                  />
+                  <Input id="stock" type="number" placeholder="0" value={formData.stock} onChange={(e) => setFormData({ ...formData, stock: e.target.value })} className="h-9" />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="minStock" className="text-xs flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3 text-warning" />
-                    Alerta Estoque Baixo
-                  </Label>
-                  <Input
-                    id="minStock"
-                    type="number"
-                    placeholder="0"
-                    value={formData.minStock}
-                    onChange={(e) => setFormData({ ...formData, minStock: e.target.value })}
-                    className="h-9"
-                  />
+                  <Label htmlFor="minStock" className="text-xs flex items-center gap-1"><AlertTriangle className="w-3 h-3 text-warning" />Alerta Estoque Baixo</Label>
+                  <Input id="minStock" type="number" placeholder="0" value={formData.minStock} onChange={(e) => setFormData({ ...formData, minStock: e.target.value })} className="h-9" />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="packSize" className="text-xs">Pack Size</Label>
-                  <Input
-                    id="packSize"
-                    type="number"
-                    placeholder="1"
-                    value={formData.packSize}
-                    onChange={(e) => setFormData({ ...formData, packSize: e.target.value })}
-                    className="h-9"
-                  />
+                  <Input id="packSize" type="number" placeholder="1" value={formData.packSize} onChange={(e) => setFormData({ ...formData, packSize: e.target.value })} className="h-9" />
                 </div>
               </div>
 
-              {/* Unit */}
               <div className="grid gap-1.5 max-w-[200px]">
                 <Label className="text-xs">Unidade de Medida</Label>
-                <Select
-                  value={formData.unit}
-                  onValueChange={(v) => setFormData({ ...formData, unit: v })}
-                >
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
+                <Select value={formData.unit} onValueChange={(v) => setFormData({ ...formData, unit: v })}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="un">Unidade (un)</SelectItem>
                     <SelectItem value="kg">Quilograma (kg)</SelectItem>
@@ -554,12 +465,54 @@ const Products = () => {
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setFormOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={() => setFormOpen(false)}>
-                {editProduct ? "Salvar Alterações" : "Cadastrar Produto"}
-              </Button>
+              <Button variant="outline" onClick={() => setFormOpen(false)}>Cancelar</Button>
+              <Button onClick={() => setFormOpen(false)}>{editProduct ? "Salvar Alterações" : "Cadastrar Produto"}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Import Dialog */}
+        <Dialog open={importOpen} onOpenChange={setImportOpen}>
+          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Upload className="w-5 h-5 text-primary" />
+                Importar Produtos
+              </DialogTitle>
+              <DialogDescription>Preview dos dados do ficheiro importado.</DialogDescription>
+            </DialogHeader>
+            {importData.length > 0 && (
+              <div className="border rounded-md overflow-auto max-h-[400px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      {importData[0]?.map((header, i) => (
+                        <TableHead key={i} className="text-xs whitespace-nowrap">{header}</TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {importData.slice(1, 50).map((row, ri) => (
+                      <TableRow key={ri}>
+                        {row.map((cell, ci) => (
+                          <TableCell key={ci} className="text-xs whitespace-nowrap">{cell}</TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {importData.length > 1 ? `${importData.length - 1} registos encontrados.` : "Nenhum dado encontrado."}
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setImportOpen(false); setImportData([]); }}>Cancelar</Button>
+              <Button onClick={() => {
+                setImportOpen(false);
+                setImportData([]);
+                toast({ title: "Importação simulada", description: `${importData.length - 1} produtos processados com sucesso.` });
+              }}>Confirmar Importação</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -568,7 +521,6 @@ const Products = () => {
   );
 };
 
-// Small barcode icon component to avoid lucide naming conflict
 function BarCode({ className }: { className?: string }) {
   return <Barcode className={className} />;
 }
