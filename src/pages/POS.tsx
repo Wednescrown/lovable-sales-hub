@@ -1,11 +1,12 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { POSHeader } from "@/components/pos/POSHeader";
 import { POSProductGrid } from "@/components/pos/POSProductGrid";
 import { POSCart, type CartItem } from "@/components/pos/POSCart";
 import { POSPaymentDialog } from "@/components/pos/POSPaymentDialog";
-import { type Product } from "@/data/mockProducts";
+import { type Product, mockProducts } from "@/data/mockProducts";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ShoppingCart, PauseCircle, LogOut, Coffee, Plus, X } from "lucide-react";
@@ -54,6 +55,7 @@ export default function POS() {
   const [paused, setPaused] = useState(false);
   const isMobile = useIsMobile();
 
+
   // Multi-tab sales
   const [tabs, setTabs] = useState<SaleTab[]>([createTab(1)]);
   const [activeTabId, setActiveTabId] = useState(1);
@@ -101,6 +103,51 @@ export default function POS() {
       return { ...tab, cartItems: [...tab.cartItems, { product, quantity: 1 }] };
     });
   }, [updateActiveTab]);
+
+  // Global barcode scanner listener
+  const barcodeBuffer = useRef("");
+  const barcodeTimeout = useRef<NodeJS.Timeout>();
+
+  const handleBarcodeScan = useCallback((barcode: string) => {
+    const product = mockProducts.find((p) => p.barcode === barcode);
+    if (product) {
+      addToCart(product);
+      toast.success(`${product.name} adicionado ao carrinho`);
+    } else {
+      toast.error("Produto não cadastrado.");
+    }
+  }, [addToCart]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (paused || paymentOpen || panelDialogOpen || drawerOpen) return;
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if (e.key === "Enter") {
+        if (barcodeBuffer.current.length > 0) {
+          handleBarcodeScan(barcodeBuffer.current);
+          barcodeBuffer.current = "";
+        }
+        clearTimeout(barcodeTimeout.current);
+        return;
+      }
+
+      if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
+        barcodeBuffer.current += e.key;
+        clearTimeout(barcodeTimeout.current);
+        barcodeTimeout.current = setTimeout(() => {
+          barcodeBuffer.current = "";
+        }, 100);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      clearTimeout(barcodeTimeout.current);
+    };
+  }, [paused, paymentOpen, panelDialogOpen, drawerOpen, handleBarcodeScan]);
 
   const updateQuantity = useCallback((productId: string, delta: number) => {
     updateActiveTab((tab) => ({
