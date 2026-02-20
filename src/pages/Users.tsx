@@ -56,6 +56,8 @@ import {
   UserX,
 } from "lucide-react";
 
+import { Checkbox } from "@/components/ui/checkbox";
+
 type AppRole = "admin" | "gestor" | "caixeiro" | "gestor_stock";
 
 interface Profile {
@@ -80,6 +82,19 @@ interface ActivityLog {
   action: string;
   details: Record<string, unknown> | null;
   created_at: string;
+}
+
+interface CustomRole {
+  id: string;
+  name: string;
+  label: string;
+  description: string;
+}
+
+interface UserCustomRole {
+  id: string;
+  user_id: string;
+  custom_role_id: string;
 }
 
 const ROLE_LABELS: Record<AppRole, string> = {
@@ -109,6 +124,7 @@ export default function Users() {
     phone: "",
     role: "caixeiro" as AppRole,
     is_active: true,
+    customRoleIds: [] as string[],
   });
   const [inviteData, setInviteData] = useState({
     email: "",
@@ -116,6 +132,7 @@ export default function Users() {
     display_name: "",
     phone: "",
     role: "caixeiro" as AppRole,
+    customRoleIds: [] as string[],
   });
   const [isInviting, setIsInviting] = useState(false);
 
@@ -153,6 +170,31 @@ export default function Users() {
         .limit(100);
       if (error) throw error;
       return data as ActivityLog[];
+    },
+  });
+
+  // Fetch custom roles
+  const { data: customRoles = [] } = useQuery({
+    queryKey: ["custom_roles"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("custom_roles")
+        .select("*")
+        .order("label");
+      if (error) throw error;
+      return data as CustomRole[];
+    },
+  });
+
+  // Fetch user custom role assignments
+  const { data: userCustomRoles = [] } = useQuery({
+    queryKey: ["user_custom_roles"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("user_custom_roles")
+        .select("*");
+      if (error) throw error;
+      return data as UserCustomRole[];
     },
   });
 
@@ -211,10 +253,36 @@ export default function Users() {
     },
   });
 
+  // Sync custom roles mutation
+  const syncCustomRoles = useMutation({
+    mutationFn: async ({ userId, customRoleIds }: { userId: string; customRoleIds: string[] }) => {
+      // Delete existing
+      const { error: delError } = await (supabase as any)
+        .from("user_custom_roles")
+        .delete()
+        .eq("user_id", userId);
+      if (delError) throw delError;
+      // Insert new
+      if (customRoleIds.length > 0) {
+        const rows = customRoleIds.map((crId) => ({ user_id: userId, custom_role_id: crId }));
+        const { error: insError } = await (supabase as any)
+          .from("user_custom_roles")
+          .insert(rows);
+        if (insError) throw insError;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user_custom_roles"] });
+    },
+  });
+
   const getUserRole = (userId: string): AppRole => {
     const role = userRoles.find((r) => r.user_id === userId);
     return role?.role ?? "caixeiro";
   };
+
+  const getUserCustomRoleIds = (userId: string): string[] =>
+    userCustomRoles.filter((ucr) => ucr.user_id === userId).map((ucr) => ucr.custom_role_id);
 
   const getUserName = (userId: string): string => {
     const profile = profiles.find((p) => p.user_id === userId);
@@ -236,6 +304,7 @@ export default function Users() {
       phone: profile.phone ?? "",
       role: getUserRole(profile.user_id),
       is_active: profile.is_active,
+      customRoleIds: getUserCustomRoleIds(profile.user_id),
     });
     setEditDialog(true);
   };
@@ -251,6 +320,10 @@ export default function Users() {
         is_active: formData.is_active,
       },
       role: formData.role,
+    });
+    syncCustomRoles.mutate({
+      userId: selectedUser.user_id,
+      customRoleIds: formData.customRoleIds,
     });
   };
 
@@ -278,7 +351,7 @@ export default function Users() {
       if (!res.ok) throw new Error(result.error);
       toast.success("Utilizador criado com sucesso");
       setInviteDialog(false);
-      setInviteData({ email: "", full_name: "", display_name: "", phone: "", role: "caixeiro" });
+      setInviteData({ email: "", full_name: "", display_name: "", phone: "", role: "caixeiro", customRoleIds: [] });
       queryClient.invalidateQueries({ queryKey: ["profiles"] });
       queryClient.invalidateQueries({ queryKey: ["user_roles"] });
     } catch (err) {
@@ -415,9 +488,20 @@ export default function Users() {
                               {profile.phone ?? "—"}
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline" className={ROLE_COLORS[role]}>
-                                {ROLE_LABELS[role]}
-                              </Badge>
+                              <div className="flex flex-wrap gap-1">
+                                <Badge variant="outline" className={ROLE_COLORS[role]}>
+                                  {ROLE_LABELS[role]}
+                                </Badge>
+                                {getUserCustomRoleIds(profile.user_id).map((crId) => {
+                                  const cr = customRoles.find((c) => c.id === crId);
+                                  if (!cr) return null;
+                                  return (
+                                    <Badge key={crId} variant="outline" className="bg-purple-500/10 text-purple-700 border-purple-200">
+                                      {cr.label}
+                                    </Badge>
+                                  );
+                                })}
+                              </div>
                             </TableCell>
                             <TableCell>
                               <Switch
@@ -551,6 +635,32 @@ export default function Users() {
                   </SelectContent>
                 </Select>
               </div>
+              {customRoles.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Cargos Personalizados</Label>
+                  <div className="space-y-2 rounded-lg border p-3">
+                    {customRoles.map((cr) => (
+                      <div key={cr.id} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`edit-cr-${cr.id}`}
+                          checked={formData.customRoleIds.includes(cr.id)}
+                          onCheckedChange={(checked) => {
+                            setFormData((f) => ({
+                              ...f,
+                              customRoleIds: checked
+                                ? [...f.customRoleIds, cr.id]
+                                : f.customRoleIds.filter((id) => id !== cr.id),
+                            }));
+                          }}
+                        />
+                        <label htmlFor={`edit-cr-${cr.id}`} className="text-sm cursor-pointer">
+                          {cr.label}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <Label>Activo</Label>
                 <Switch
@@ -625,6 +735,32 @@ export default function Users() {
                   </SelectContent>
                 </Select>
               </div>
+              {customRoles.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Cargos Personalizados</Label>
+                  <div className="space-y-2 rounded-lg border p-3">
+                    {customRoles.map((cr) => (
+                      <div key={cr.id} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`invite-cr-${cr.id}`}
+                          checked={inviteData.customRoleIds.includes(cr.id)}
+                          onCheckedChange={(checked) => {
+                            setInviteData((f) => ({
+                              ...f,
+                              customRoleIds: checked
+                                ? [...f.customRoleIds, cr.id]
+                                : f.customRoleIds.filter((id) => id !== cr.id),
+                            }));
+                          }}
+                        />
+                        <label htmlFor={`invite-cr-${cr.id}`} className="text-sm cursor-pointer">
+                          {cr.label}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setInviteDialog(false)}>
