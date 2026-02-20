@@ -1,59 +1,42 @@
 
 
-## Leitura Global de Codigo de Barras no POS
+# Adicionar Botoes de Gestao a Pagina de Funcoes
 
-### Resumo
+## Problema
+A pagina actual de Funcoes & Permissoes permite apenas visualizar e alternar permissoes existentes, mas nao tem botoes para adicionar novos modulos a matriz nem para gerir os cargos.
 
-Implementar um listener global de teclado no modulo POS que captura automaticamente leituras de scanners de codigo de barras, sem necessidade de foco manual no campo de pesquisa. O scanner envia caracteres rapidamente seguidos de Enter -- o sistema detecta esse padrao, busca o produto pelo barcode e adiciona ao carrinho.
+## O Que Sera Adicionado
 
----
+### 1. Botao "Adicionar Modulo"
+- Um botao no cabecalho da pagina que abre um dialogo
+- O dialogo pede o identificador interno (slug) e o nome de exibicao do modulo
+- Ao confirmar, insere uma linha na tabela `module_permissions` para cada um dos 4 cargos (com `can_access = false` por defeito, excepto admin que fica `true`)
+- O modulo aparece imediatamente na matriz de permissoes
 
-### Como funciona
+### 2. Botao "Editar Cargo" nos Cards de Cargo
+- Adicionar um icone de edicao (lapiz) em cada card de cargo (excepto admin)
+- Ao clicar, abre um dialogo onde se pode editar a descricao do cargo
+- Nota: os nomes dos cargos estao definidos como enum no banco de dados (`app_role`), por isso a criacao de cargos totalmente novos requer uma migracao de base de dados. Para manter o sistema estavel, a edicao sera limitada aos metadados visuais (label e descricao) armazenados localmente
 
-1. Um `useEffect` no componente `POS` regista um event listener global em `document` para eventos `keydown`
-2. Caracteres alfanumericos sao acumulados num buffer (ref)
-3. Ao detectar `Enter`, o buffer e processado como codigo de barras
-4. O buffer e limpo automaticamente apos um timeout (ex: 100ms sem tecla) para evitar captura acidental de digitacao normal
-5. A leitura e ignorada quando:
-   - O caixa esta em pausa (`paused === true`)
-   - Um modal/dialog esta aberto (`paymentOpen`, `panelDialogOpen`)
-   - O foco esta num campo de input/textarea (o utilizador esta a digitar manualmente)
+### 3. Botao "Remover Modulo"
+- Na vista de edicao de um cargo, cada modulo tera um botao para remover esse modulo da matriz inteira (remove as linhas de todos os cargos)
+- Com confirmacao antes de apagar
 
-### Logica de processamento
+## Detalhes Tecnicos
 
-```text
-keydown -> caracter alfanumerico?
-  Sim -> acumular no buffer, resetar timeout
-  Enter? -> processar buffer:
-    -> Buscar produto em mockProducts onde barcode === buffer
-    -> Encontrado? -> addToCart(produto) + toast de sucesso
-    -> Nao encontrado? -> toast de erro "Produto nao cadastrado"
-    -> Limpar buffer
-  Timeout 100ms sem tecla -> limpar buffer (input humano lento, nao e scanner)
-```
+### Ficheiros a Modificar
+- **`src/pages/Funcoes.tsx`** -- adicionar os dialogos, botoes e mutacoes
 
----
+### Novas Mutacoes React Query
+1. **`addModule`** -- insere 4 linhas em `module_permissions` (uma por cargo) usando `supabase.from("module_permissions").insert([...])`
+2. **`removeModule`** -- apaga todas as linhas de `module_permissions` onde `module = X` usando `supabase.from("module_permissions").delete().eq("module", x)`
 
-### Ficheiros a modificar
+### Componentes UI Utilizados
+- `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle` para os formularios
+- `Input` para o nome do modulo
+- `Button` para accoes
+- `AlertDialog` para confirmacao de remocao
 
-| Ficheiro | Alteracao |
-|---|---|
-| `src/pages/POS.tsx` | Adicionar hook `useEffect` com listener global `keydown`; criar `useRef` para buffer e timeout; funcao `handleBarcodeScan(barcode)` que busca produto e chama `addToCart` ou mostra toast de erro |
-
-### Detalhes tecnicos
-
-- **Buffer**: `useRef<string>("")` para acumular caracteres
-- **Timeout**: `useRef<NodeJS.Timeout>()` -- resetado a cada keydown; ao expirar (100ms), limpa o buffer
-- **Filtro de foco**: verificar `document.activeElement?.tagName` -- se for `INPUT` ou `TEXTAREA`, ignorar (o utilizador esta a digitar no campo de pesquisa normalmente)
-- **Filtro de modais**: verificar estados `paused`, `paymentOpen`, `panelDialogOpen`, `drawerOpen` -- se algum estiver `true`, ignorar
-- **Toast**: usar `toast` do sonner para feedback visual nao bloqueante ("Produto adicionado" ou "Produto nao cadastrado")
-- **Dados**: por agora busca em `mockProducts` pelo campo `barcode`. Quando houver base de dados, bastara trocar por query ao Supabase
-
-### Exemplo de uso
-
-O operador aponta o scanner para o codigo de barras de uma "Coca-Cola 350ml" (barcode: `7891234560012`). O scanner envia rapidamente `7891234560012` + `Enter`. O sistema:
-1. Acumula os digitos no buffer
-2. Ao receber Enter, busca `mockProducts.find(p => p.barcode === "7891234560012")`
-3. Encontra o produto -> chama `addToCart(produto)`
-4. Mostra toast: "Coca-Cola 350ml adicionada ao carrinho"
+### Sobre Cargos Personalizados
+Os cargos estao definidos como um enum PostgreSQL (`app_role`), o que significa que adicionar novos cargos requer alterar esse enum na base de dados. Para uma primeira versao, vamos focar na gestao de modulos (que e dinamica). Se no futuro quiser criar cargos completamente novos, sera necessaria uma migracao de base de dados para estender o enum.
 
