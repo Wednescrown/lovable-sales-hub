@@ -102,34 +102,18 @@ export default function CompanyLogin() {
         return;
       }
 
-      // Create the company
-      const { data: company, error: companyError } = await supabase
-        .from("companies" as any)
-        .insert({
-          name: companyName.trim(),
-          email: email.trim(),
-          phone: phone.trim() || null,
-        })
-        .select("id")
-        .single();
+      // Register company via SECURITY DEFINER function (bypasses RLS)
+      const { error: regError } = await supabase.rpc("register_company" as any, {
+        _user_id: signUpData.user.id,
+        _company_name: companyName.trim(),
+        _company_email: email.trim(),
+        _company_phone: phone.trim() || null,
+      });
 
-      if (companyError) {
-        setError("Conta criada, mas erro ao registar empresa: " + companyError.message);
+      if (regError) {
+        setError("Conta criada, mas erro ao registar empresa: " + regError.message);
         return;
       }
-
-      // Update the profile with company_id
-      const companyId = (company as any).id;
-      await supabase
-        .from("profiles")
-        .update({ company_id: companyId })
-        .eq("user_id", signUpData.user.id);
-
-      // Upgrade role to admin
-      await supabase
-        .from("user_roles")
-        .update({ role: "admin" as any })
-        .eq("user_id", signUpData.user.id);
 
       setSuccess("Empresa registada com sucesso! Verifique o seu email para confirmar a conta, ou faça login directamente.");
       setMode("login");
