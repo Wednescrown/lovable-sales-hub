@@ -41,6 +41,65 @@ export type Database = {
         }
         Relationships: []
       }
+      custom_role_permissions: {
+        Row: {
+          can_access: boolean
+          custom_role_id: string
+          id: string
+          module: string
+        }
+        Insert: {
+          can_access?: boolean
+          custom_role_id: string
+          id?: string
+          module: string
+        }
+        Update: {
+          can_access?: boolean
+          custom_role_id?: string
+          id?: string
+          module?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_role_permissions_custom_role_id_fkey"
+            columns: ["custom_role_id"]
+            isOneToOne: false
+            referencedRelation: "custom_roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      custom_roles: {
+        Row: {
+          company_id: string
+          created_at: string
+          description: string | null
+          id: string
+          label: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          label: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          label?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       module_permissions: {
         Row: {
           can_access: boolean
@@ -100,6 +159,35 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_custom_roles: {
+        Row: {
+          created_at: string
+          custom_role_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          custom_role_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          custom_role_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_custom_roles_custom_role_id_fkey"
+            columns: ["custom_role_id"]
+            isOneToOne: false
+            referencedRelation: "custom_roles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
