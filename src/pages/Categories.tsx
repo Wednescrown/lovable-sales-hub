@@ -1,42 +1,28 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import {
-  Layers,
-  Plus,
-  Edit,
-  Trash2,
-  ChevronRight,
-  FolderOpen,
-  Search,
+  Layers, Plus, Edit, Trash2, ChevronRight, FolderOpen, Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { mockCategories, type Category, type Subcategory } from "@/data/mockProducts";
+import { useToast } from "@/hooks/use-toast";
+import { useCategories, useAllSubcategories, useCategoryMutations } from "@/hooks/useCategories";
 
 const Categories = () => {
+  const { toast } = useToast();
+  const { data: categories = [], isLoading: catLoading } = useCategories();
+  const { data: subcategories = [], isLoading: subLoading } = useAllSubcategories();
+  const { createCategory, updateCategory, deleteCategory, createSubcategory, updateSubcategory, deleteSubcategory } = useCategoryMutations();
+
   const [search, setSearch] = useState("");
   const [expandedCat, setExpandedCat] = useState<string | null>(null);
   const [catDialogOpen, setCatDialogOpen] = useState(false);
@@ -44,47 +30,108 @@ const Categories = () => {
   const [catName, setCatName] = useState("");
   const [subName, setSubName] = useState("");
   const [subCategoryParent, setSubCategoryParent] = useState("");
-  const [editingCat, setEditingCat] = useState<Category | null>(null);
-  const [editingSub, setEditingSub] = useState<Subcategory | null>(null);
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editingSubId, setEditingSubId] = useState<string | null>(null);
 
-  const filteredCategories = mockCategories.filter(
+  // Build categories with their subcategories
+  const categoriesWithSubs = categories.map((cat) => ({
+    ...cat,
+    subs: subcategories.filter((s) => s.category_id === cat.id),
+  }));
+
+  const filteredCategories = categoriesWithSubs.filter(
     (cat) =>
       cat.name.toLowerCase().includes(search.toLowerCase()) ||
-      cat.subcategories.some((sub) =>
-        sub.name.toLowerCase().includes(search.toLowerCase())
-      )
+      cat.subs.some((sub) => sub.name.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const totalSubs = mockCategories.reduce(
-    (acc, cat) => acc + cat.subcategories.length,
-    0
-  );
+  const totalSubs = subcategories.length;
 
   const openCreateCategory = () => {
-    setEditingCat(null);
+    setEditingCatId(null);
     setCatName("");
     setCatDialogOpen(true);
   };
 
-  const openEditCategory = (cat: Category) => {
-    setEditingCat(cat);
+  const openEditCategory = (cat: { id: string; name: string }) => {
+    setEditingCatId(cat.id);
     setCatName(cat.name);
     setCatDialogOpen(true);
   };
 
   const openCreateSubcategory = (parentId?: string) => {
-    setEditingSub(null);
+    setEditingSubId(null);
     setSubName("");
     setSubCategoryParent(parentId || "");
     setSubDialogOpen(true);
   };
 
-  const openEditSubcategory = (sub: Subcategory) => {
-    setEditingSub(sub);
+  const openEditSubcategory = (sub: { id: string; name: string; category_id: string }) => {
+    setEditingSubId(sub.id);
     setSubName(sub.name);
-    setSubCategoryParent(sub.categoryId);
+    setSubCategoryParent(sub.category_id);
     setSubDialogOpen(true);
   };
+
+  const handleSaveCategory = async () => {
+    if (!catName.trim()) return;
+    try {
+      if (editingCatId) {
+        await updateCategory.mutateAsync({ id: editingCatId, name: catName.trim() });
+        toast({ title: "Categoria atualizada" });
+      } else {
+        await createCategory.mutateAsync(catName.trim());
+        toast({ title: "Categoria criada" });
+      }
+      setCatDialogOpen(false);
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleSaveSubcategory = async () => {
+    if (!subName.trim() || !subCategoryParent) return;
+    try {
+      if (editingSubId) {
+        await updateSubcategory.mutateAsync({ id: editingSubId, name: subName.trim(), categoryId: subCategoryParent });
+        toast({ title: "Subcategoria atualizada" });
+      } else {
+        await createSubcategory.mutateAsync({ name: subName.trim(), categoryId: subCategoryParent });
+        toast({ title: "Subcategoria criada" });
+      }
+      setSubDialogOpen(false);
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    try {
+      await deleteCategory.mutateAsync(id);
+      toast({ title: "Categoria removida" });
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleDeleteSubcategory = async (id: string) => {
+    try {
+      await deleteSubcategory.mutateAsync(id);
+      toast({ title: "Subcategoria removida" });
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    }
+  };
+
+  if (catLoading || subLoading) {
+    return (
+      <AppLayout>
+        <div className="p-6 flex items-center justify-center h-64">
+          <p className="text-sm text-muted-foreground">Carregando categorias...</p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>
@@ -121,9 +168,7 @@ const Categories = () => {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Categorias</p>
-                <p className="text-lg font-bold text-foreground">
-                  {mockCategories.length}
-                </p>
+                <p className="text-lg font-bold text-foreground">{categories.length}</p>
               </div>
             </CardContent>
           </Card>
@@ -158,87 +203,49 @@ const Categories = () => {
             return (
               <Card key={cat.id}>
                 <CardContent className="p-0">
-                  {/* Category Header */}
                   <div
                     className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"
                     onClick={() => setExpandedCat(isExpanded ? null : cat.id)}
                   >
                     <div className="flex items-center gap-3">
-                      <ChevronRight
-                        className={`w-4 h-4 text-muted-foreground transition-transform ${
-                          isExpanded ? "rotate-90" : ""
-                        }`}
-                      />
+                      <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
                       <Layers className="w-4 h-4 text-primary" />
-                      <span className="text-sm font-semibold text-foreground">
-                        {cat.name}
-                      </span>
-                      <Badge variant="secondary" className="text-[10px]">
-                        {cat.subcategories.length} subcategorias
-                      </Badge>
+                      <span className="text-sm font-semibold text-foreground">{cat.name}</span>
+                      <Badge variant="secondary" className="text-[10px]">{cat.subs.length} subcategorias</Badge>
                     </div>
                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => openCreateSubcategory(cat.id)}
-                      >
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openCreateSubcategory(cat.id)}>
                         <Plus className="w-3.5 h-3.5" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => openEditCategory(cat)}
-                      >
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditCategory(cat)}>
                         <Edit className="w-3.5 h-3.5" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-destructive hover:text-destructive"
-                      >
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleDeleteCategory(cat.id)}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
                   </div>
 
-                  {/* Subcategories */}
                   {isExpanded && (
                     <div className="border-t border-border">
-                      {cat.subcategories.map((sub) => (
-                        <div
-                          key={sub.id}
-                          className="flex items-center justify-between px-4 py-2.5 pl-12 hover:bg-muted/20 transition-colors"
-                        >
+                      {cat.subs.map((sub) => (
+                        <div key={sub.id} className="flex items-center justify-between px-4 py-2.5 pl-12 hover:bg-muted/20 transition-colors">
                           <div className="flex items-center gap-2">
                             <FolderOpen className="w-3.5 h-3.5 text-muted-foreground" />
                             <span className="text-sm text-foreground">{sub.name}</span>
                           </div>
                           <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => openEditSubcategory(sub)}
-                            >
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditSubcategory(sub)}>
                               <Edit className="w-3.5 h-3.5" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-destructive hover:text-destructive"
-                            >
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleDeleteSubcategory(sub.id)}>
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                           </div>
                         </div>
                       ))}
-                      {cat.subcategories.length === 0 && (
-                        <p className="text-xs text-muted-foreground text-center py-4">
-                          Nenhuma subcategoria cadastrada.
-                        </p>
+                      {cat.subs.length === 0 && (
+                        <p className="text-xs text-muted-foreground text-center py-4">Nenhuma subcategoria cadastrada.</p>
                       )}
                     </div>
                   )}
@@ -248,9 +255,7 @@ const Categories = () => {
           })}
           {filteredCategories.length === 0 && (
             <Card>
-              <CardContent className="p-8 text-center text-sm text-muted-foreground">
-                Nenhuma categoria encontrada.
-              </CardContent>
+              <CardContent className="p-8 text-center text-sm text-muted-foreground">Nenhuma categoria encontrada.</CardContent>
             </Card>
           )}
         </div>
@@ -261,30 +266,22 @@ const Categories = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Layers className="w-5 h-5 text-primary" />
-                {editingCat ? "Editar Categoria" : "Nova Categoria"}
+                {editingCatId ? "Editar Categoria" : "Nova Categoria"}
               </DialogTitle>
               <DialogDescription>
-                {editingCat ? "Atualize o nome da categoria." : "Crie uma nova categoria para organizar produtos."}
+                {editingCatId ? "Atualize o nome da categoria." : "Crie uma nova categoria para organizar produtos."}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="catName" className="text-xs">Nome da Categoria *</Label>
-                <Input
-                  id="catName"
-                  placeholder="Ex: Bebidas"
-                  value={catName}
-                  onChange={(e) => setCatName(e.target.value)}
-                  className="h-9"
-                />
+                <Input id="catName" placeholder="Ex: Bebidas" value={catName} onChange={(e) => setCatName(e.target.value)} className="h-9" />
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setCatDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={() => setCatDialogOpen(false)}>
-                {editingCat ? "Salvar" : "Criar Categoria"}
+              <Button variant="outline" onClick={() => setCatDialogOpen(false)}>Cancelar</Button>
+              <Button onClick={handleSaveCategory} disabled={createCategory.isPending || updateCategory.isPending}>
+                {editingCatId ? "Salvar" : "Criar Categoria"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -296,48 +293,33 @@ const Categories = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <FolderOpen className="w-5 h-5 text-primary" />
-                {editingSub ? "Editar Subcategoria" : "Nova Subcategoria"}
+                {editingSubId ? "Editar Subcategoria" : "Nova Subcategoria"}
               </DialogTitle>
               <DialogDescription>
-                {editingSub ? "Atualize as informações da subcategoria." : "Crie uma nova subcategoria vinculada a uma categoria."}
+                {editingSubId ? "Atualize as informações da subcategoria." : "Crie uma nova subcategoria vinculada a uma categoria."}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-2">
               <div className="grid gap-1.5">
                 <Label className="text-xs">Categoria Pai *</Label>
-                <Select
-                  value={subCategoryParent}
-                  onValueChange={setSubCategoryParent}
-                >
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Selecionar categoria" />
-                  </SelectTrigger>
+                <Select value={subCategoryParent} onValueChange={setSubCategoryParent}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Selecionar categoria" /></SelectTrigger>
                   <SelectContent>
-                    {mockCategories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="subName" className="text-xs">Nome da Subcategoria *</Label>
-                <Input
-                  id="subName"
-                  placeholder="Ex: Refrigerantes"
-                  value={subName}
-                  onChange={(e) => setSubName(e.target.value)}
-                  className="h-9"
-                />
+                <Input id="subName" placeholder="Ex: Refrigerantes" value={subName} onChange={(e) => setSubName(e.target.value)} className="h-9" />
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setSubDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={() => setSubDialogOpen(false)}>
-                {editingSub ? "Salvar" : "Criar Subcategoria"}
+              <Button variant="outline" onClick={() => setSubDialogOpen(false)}>Cancelar</Button>
+              <Button onClick={handleSaveSubcategory} disabled={createSubcategory.isPending || updateSubcategory.isPending}>
+                {editingSubId ? "Salvar" : "Criar Subcategoria"}
               </Button>
             </DialogFooter>
           </DialogContent>
