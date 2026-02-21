@@ -54,6 +54,7 @@ import {
   Users as UsersIcon,
   UserCheck,
   UserX,
+  KeyRound,
 } from "lucide-react";
 
 import { Checkbox } from "@/components/ui/checkbox";
@@ -135,6 +136,7 @@ export default function Users() {
     customRoleIds: [] as string[],
   });
   const [isInviting, setIsInviting] = useState(false);
+  const [resetPinDialog, setResetPinDialog] = useState(false);
 
   // Fetch profiles
   const { data: profiles = [], isLoading } = useQuery({
@@ -670,6 +672,17 @@ export default function Users() {
                   }
                 />
               </div>
+              {/* Reset PIN */}
+              <div className="pt-2 border-t">
+                <Button
+                  variant="outline"
+                  className="w-full gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
+                  onClick={() => setResetPinDialog(true)}
+                >
+                  <KeyRound className="w-4 h-4" />
+                  Redefinir PIN
+                </Button>
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditDialog(false)}>
@@ -681,6 +694,38 @@ export default function Users() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Reset PIN Confirmation */}
+        <AlertDialog open={resetPinDialog} onOpenChange={setResetPinDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Redefinir PIN?</AlertDialogTitle>
+              <AlertDialogDescription>
+                O PIN actual de <strong>{selectedUser?.full_name}</strong> será eliminado. Na próxima vez que fizer login, será obrigado a definir um novo PIN.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={async () => {
+                  if (!selectedUser) return;
+                  const { error } = await (supabase as any).rpc("reset_user_pin", {
+                    _profile_id: selectedUser.id,
+                  });
+                  if (error) {
+                    toast.error("Erro ao redefinir PIN: " + error.message);
+                  } else {
+                    toast.success("PIN redefinido com sucesso. O utilizador terá de definir um novo PIN.");
+                  }
+                  setResetPinDialog(false);
+                }}
+              >
+                Redefinir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         {/* Invite Dialog */}
         <Dialog open={inviteDialog} onOpenChange={setInviteDialog}>
           <DialogContent>

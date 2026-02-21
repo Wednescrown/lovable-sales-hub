@@ -172,6 +172,200 @@ export type Database = {
         }
         Relationships: []
       }
+      goods_received_notes: {
+        Row: {
+          branch_id: string | null
+          company_id: string
+          created_at: string
+          grn_number: string
+          id: string
+          notes: string | null
+          purchase_order_id: string | null
+          received_at: string
+          received_by: string | null
+          status: Database["public"]["Enums"]["grn_status"]
+          supplier_id: string
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          company_id: string
+          created_at?: string
+          grn_number: string
+          id?: string
+          notes?: string | null
+          purchase_order_id?: string | null
+          received_at?: string
+          received_by?: string | null
+          status?: Database["public"]["Enums"]["grn_status"]
+          supplier_id: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          company_id?: string
+          created_at?: string
+          grn_number?: string
+          id?: string
+          notes?: string | null
+          purchase_order_id?: string | null
+          received_at?: string
+          received_by?: string | null
+          status?: Database["public"]["Enums"]["grn_status"]
+          supplier_id?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goods_received_notes_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goods_received_notes_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goods_received_notes_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grn_items: {
+        Row: {
+          grn_id: string
+          id: string
+          product_name: string
+          quantity_received: number
+          sku: string | null
+          total_cost: number
+          unit_cost: number
+        }
+        Insert: {
+          grn_id: string
+          id?: string
+          product_name: string
+          quantity_received?: number
+          sku?: string | null
+          total_cost?: number
+          unit_cost?: number
+        }
+        Update: {
+          grn_id?: string
+          id?: string
+          product_name?: string
+          quantity_received?: number
+          sku?: string | null
+          total_cost?: number
+          unit_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grn_items_grn_id_fkey"
+            columns: ["grn_id"]
+            isOneToOne: false
+            referencedRelation: "goods_received_notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grn_return_items: {
+        Row: {
+          grn_item_id: string
+          grn_return_id: string
+          id: string
+          quantity_returned: number
+          total_cost: number
+          unit_cost: number
+        }
+        Insert: {
+          grn_item_id: string
+          grn_return_id: string
+          id?: string
+          quantity_returned?: number
+          total_cost?: number
+          unit_cost?: number
+        }
+        Update: {
+          grn_item_id?: string
+          grn_return_id?: string
+          id?: string
+          quantity_returned?: number
+          total_cost?: number
+          unit_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grn_return_items_grn_item_id_fkey"
+            columns: ["grn_item_id"]
+            isOneToOne: false
+            referencedRelation: "grn_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grn_return_items_grn_return_id_fkey"
+            columns: ["grn_return_id"]
+            isOneToOne: false
+            referencedRelation: "grn_returns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grn_returns: {
+        Row: {
+          company_id: string
+          created_at: string
+          grn_id: string
+          id: string
+          reason: string | null
+          return_number: string
+          returned_at: string
+          returned_by: string | null
+          total_amount: number
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          grn_id: string
+          id?: string
+          reason?: string | null
+          return_number: string
+          returned_at?: string
+          returned_by?: string | null
+          total_amount?: number
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          grn_id?: string
+          id?: string
+          reason?: string | null
+          return_number?: string
+          returned_at?: string
+          returned_by?: string | null
+          total_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grn_returns_grn_id_fkey"
+            columns: ["grn_id"]
+            isOneToOne: false
+            referencedRelation: "goods_received_notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       module_permissions: {
         Row: {
           can_access: boolean
@@ -253,6 +447,149 @@ export type Database = {
           },
         ]
       }
+      purchase_order_items: {
+        Row: {
+          id: string
+          product_name: string
+          purchase_order_id: string
+          quantity_ordered: number
+          quantity_received: number
+          sku: string | null
+          total_cost: number
+          unit_cost: number
+        }
+        Insert: {
+          id?: string
+          product_name: string
+          purchase_order_id: string
+          quantity_ordered?: number
+          quantity_received?: number
+          sku?: string | null
+          total_cost?: number
+          unit_cost?: number
+        }
+        Update: {
+          id?: string
+          product_name?: string
+          purchase_order_id?: string
+          quantity_ordered?: number
+          quantity_received?: number
+          sku?: string | null
+          total_cost?: number
+          unit_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_items_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_orders: {
+        Row: {
+          branch_id: string | null
+          company_id: string
+          created_at: string
+          created_by: string | null
+          expected_date: string | null
+          id: string
+          notes: string | null
+          order_number: string
+          status: Database["public"]["Enums"]["purchase_order_status"]
+          supplier_id: string
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          expected_date?: string | null
+          id?: string
+          notes?: string | null
+          order_number: string
+          status?: Database["public"]["Enums"]["purchase_order_status"]
+          supplier_id: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          expected_date?: string | null
+          id?: string
+          notes?: string | null
+          order_number?: string
+          status?: Database["public"]["Enums"]["purchase_order_status"]
+          supplier_id?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_orders_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      suppliers: {
+        Row: {
+          address: string | null
+          company_id: string
+          contact_person: string | null
+          created_at: string
+          email: string | null
+          id: string
+          is_active: boolean
+          name: string
+          phone: string | null
+          tax_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          company_id: string
+          contact_person?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          phone?: string | null
+          tax_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          company_id?: string
+          contact_person?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          phone?: string | null
+          tax_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_custom_roles: {
         Row: {
           created_at: string
@@ -308,7 +645,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_return_grn: {
+        Args: { _grn_id: string; _user_id: string }
+        Returns: boolean
+      }
       check_has_pin: { Args: { _profile_id: string }; Returns: boolean }
+      generate_next_grn_number: {
+        Args: { _company_id: string }
+        Returns: string
+      }
+      generate_next_order_number: {
+        Args: { _company_id: string }
+        Returns: string
+      }
+      generate_next_return_number: {
+        Args: { _company_id: string }
+        Returns: string
+      }
       get_user_company_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -326,6 +679,7 @@ export type Database = {
         }
         Returns: string
       }
+      reset_user_pin: { Args: { _profile_id: string }; Returns: undefined }
       set_user_pin: {
         Args: { _pin: string; _profile_id: string }
         Returns: undefined
@@ -337,6 +691,13 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "gestor" | "caixeiro" | "gestor_stock"
+      grn_status: "received" | "returned" | "corrected"
+      purchase_order_status:
+        | "draft"
+        | "sent"
+        | "partial"
+        | "received"
+        | "cancelled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -465,6 +826,14 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "gestor", "caixeiro", "gestor_stock"],
+      grn_status: ["received", "returned", "corrected"],
+      purchase_order_status: [
+        "draft",
+        "sent",
+        "partial",
+        "received",
+        "cancelled",
+      ],
     },
   },
 } as const

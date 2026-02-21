@@ -19,6 +19,9 @@ import Labels from "./pages/Labels";
 import Users from "./pages/Users";
 import Funcoes from "./pages/Funcoes";
 import Branches from "./pages/Branches";
+import Suppliers from "./pages/Suppliers";
+import PurchaseOrders from "./pages/PurchaseOrders";
+import GoodsReceived from "./pages/GoodsReceived";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -48,6 +51,9 @@ const App = () => (
             <Route path="/usuarios" element={<ProtectedRoute><Users /></ProtectedRoute>} />
             <Route path="/funcoes" element={<ProtectedRoute><Funcoes /></ProtectedRoute>} />
             <Route path="/filiais" element={<ProtectedRoute><Branches /></ProtectedRoute>} />
+            <Route path="/fornecedores" element={<ProtectedRoute><Suppliers /></ProtectedRoute>} />
+            <Route path="/lista-compras" element={<ProtectedRoute><PurchaseOrders /></ProtectedRoute>} />
+            <Route path="/recebimento" element={<ProtectedRoute><GoodsReceived /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
