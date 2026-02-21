@@ -21,13 +21,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   Search, Plus, ReceiptText, Trash2, Undo2, Eye, PackageCheck,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
+import { ProductSearchInput } from "@/components/compras/ProductSearchInput";
+import { Product } from "@/data/mockProducts";
 
 interface Supplier { id: string; name: string; }
 interface GRN {
@@ -43,13 +41,12 @@ interface GRNReturn {
   id: string; grn_id: string; return_number: string; reason: string | null;
   total_amount: number; returned_at: string;
 }
-interface GRNReturnItem {
-  grn_item_id: string; quantity_returned: number; unit_cost: number; total_cost: number;
-}
 
 interface NewGRNItem {
-  product_name: string; sku: string; quantity_received: number;
+  product_name: string; sku: string;
+  box_quantity: number; pack_size: number; total_units: number;
   unit_cost: number; total_cost: number;
+  quantity_received: number; // = total_units, for DB compat
 }
 
 const STATUS_LABELS: Record<string, string> = { received: "Recebido", returned: "Devolvido", corrected: "Corrigido" };
@@ -122,11 +119,15 @@ export default function GoodsReceived() {
         if (!po) return;
         const { data: poItems } = await (supabase as any).from("purchase_order_items").select("*").eq("purchase_order_id", poId);
         setGrnForm({ supplier_id: po.supplier_id, notes: `Ref: ${po.order_number}`, purchase_order_id: poId });
-        setGrnItems((poItems ?? []).map((i: any) => ({
-          product_name: i.product_name, sku: i.sku ?? "",
-          quantity_received: Number(i.quantity_ordered) - Number(i.quantity_received),
-          unit_cost: Number(i.unit_cost), total_cost: (Number(i.quantity_ordered) - Number(i.quantity_received)) * Number(i.unit_cost),
-        })));
+        setGrnItems((poItems ?? []).map((i: any) => {
+          const qty = Number(i.quantity_ordered) - Number(i.quantity_received);
+          return {
+            product_name: i.product_name, sku: i.sku ?? "",
+            box_quantity: qty, pack_size: 1, total_units: qty,
+            quantity_received: qty,
+            unit_cost: Number(i.unit_cost), total_cost: qty * Number(i.unit_cost),
+          };
+        }));
         setGrnDialog(true);
       })();
     }
@@ -146,11 +147,10 @@ export default function GoodsReceived() {
         }).select("id").single();
       if (error) throw error;
       if (grnItems.length > 0) {
-        const rows = grnItems.map((i) => ({ grn_id: newGrn.id, product_name: i.product_name, sku: i.sku || null, quantity_received: i.quantity_received, unit_cost: i.unit_cost, total_cost: i.total_cost }));
+        const rows = grnItems.map((i) => ({ grn_id: newGrn.id, product_name: i.product_name, sku: i.sku || null, quantity_received: i.total_units, unit_cost: i.unit_cost, total_cost: i.total_cost }));
         const { error: ie } = await (supabase as any).from("grn_items").insert(rows);
         if (ie) throw ie;
       }
-      // Update PO status if linked
       if (grnForm.purchase_order_id) {
         await (supabase as any).from("purchase_orders").update({ status: "received" }).eq("id", grnForm.purchase_order_id);
       }
@@ -187,7 +187,6 @@ export default function GoodsReceived() {
       }));
       const { error: ie } = await (supabase as any).from("grn_return_items").insert(rows);
       if (ie) throw ie;
-      // Update GRN status
       await (supabase as any).from("goods_received_notes").update({ status: "returned" }).eq("id", returnGRN.id);
     },
     onSuccess: () => {
@@ -205,14 +204,36 @@ export default function GoodsReceived() {
     setGrnDialog(true);
   };
 
-  const addGrnItem = () => setGrnItems([...grnItems, { product_name: "", sku: "", quantity_received: 1, unit_cost: 0, total_cost: 0 }]);
+  const handleProductSelect = (product: Product) => {
+    setGrnItems((prev) => {
+      const existing = prev.findIndex((i) => i.sku === product.sku);
+      if (existing >= 0) {
+        return prev.map((item, idx) => {
+          if (idx !== existing) return item;
+          const newBoxQty = item.box_quantity + 1;
+          const newTotalUnits = newBoxQty * item.pack_size;
+          return { ...item, box_quantity: newBoxQty, total_units: newTotalUnits, quantity_received: newTotalUnits, total_cost: newTotalUnits * item.unit_cost };
+        });
+      }
+      const newItem: NewGRNItem = {
+        product_name: product.name, sku: product.sku,
+        box_quantity: 1, pack_size: product.packSize,
+        total_units: product.packSize, quantity_received: product.packSize,
+        unit_cost: product.costPrice, total_cost: product.packSize * product.costPrice,
+      };
+      return [...prev, newItem];
+    });
+  };
+
   const removeGrnItem = (idx: number) => setGrnItems(grnItems.filter((_, i) => i !== idx));
-  const updateGrnItem = (idx: number, field: string, value: string | number) => {
+  const updateGrnItem = (idx: number, field: string, value: number) => {
     setGrnItems(grnItems.map((item, i) => {
       if (i !== idx) return item;
       const updated = { ...item, [field]: value };
-      if (field === "quantity_received" || field === "unit_cost") {
-        updated.total_cost = Number(updated.quantity_received) * Number(updated.unit_cost);
+      if (field === "box_quantity" || field === "unit_cost") {
+        updated.total_units = updated.box_quantity * updated.pack_size;
+        updated.quantity_received = updated.total_units;
+        updated.total_cost = updated.total_units * updated.unit_cost;
       }
       return updated;
     }));
@@ -225,7 +246,6 @@ export default function GoodsReceived() {
   };
 
   const openReturn = async (grn: GRN) => {
-    // Check if can return
     const { data: allowed } = await (supabase as any).rpc("can_return_grn", { _grn_id: grn.id, _user_id: activeUser?.user_id });
     if (!allowed) {
       toast.error("Prazo de devolução expirado (2 dias). Apenas o administrador pode devolver.");
@@ -314,97 +334,113 @@ export default function GoodsReceived() {
           </ScrollArea>
         </Card>
 
-        {/* Detail Panel */}
+        {/* Detail Panel — Fullscreen */}
         <Dialog open={!!detailGRN} onOpenChange={(open) => !open && setDetailGRN(null)}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] flex flex-col">
             <DialogHeader><DialogTitle>Detalhes — {detailGRN?.grn_number}</DialogTitle></DialogHeader>
             {detailGRN && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div><span className="text-muted-foreground">Fornecedor:</span> {getSupplierName(detailGRN.supplier_id)}</div>
-                  <div><span className="text-muted-foreground">Data:</span> {new Date(detailGRN.received_at).toLocaleString("pt-AO")}</div>
-                  <div><span className="text-muted-foreground">Estado:</span> <Badge variant="outline" className={STATUS_COLORS[detailGRN.status]}>{STATUS_LABELS[detailGRN.status]}</Badge></div>
-                  <div><span className="text-muted-foreground">Total:</span> <strong>{formatKz(Number(detailGRN.total_amount))}</strong></div>
-                </div>
-                {detailGRN.notes && <p className="text-sm text-muted-foreground">{detailGRN.notes}</p>}
-                <Table>
-                  <TableHeader><TableRow><TableHead>Produto</TableHead><TableHead>SKU</TableHead><TableHead>Qtd</TableHead><TableHead>Custo</TableHead><TableHead>Total</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                    {detailItems.map((i) => (
-                      <TableRow key={i.id}>
-                        <TableCell>{i.product_name}</TableCell>
-                        <TableCell className="text-muted-foreground">{i.sku ?? "—"}</TableCell>
-                        <TableCell>{i.quantity_received}</TableCell>
-                        <TableCell>{formatKz(i.unit_cost)}</TableCell>
-                        <TableCell>{formatKz(i.total_cost)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                {/* Returns for this GRN */}
-                {grnReturns.filter((r) => r.grn_id === detailGRN.id).length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-semibold">Devoluções</h4>
-                    {grnReturns.filter((r) => r.grn_id === detailGRN.id).map((r) => (
-                      <div key={r.id} className="p-3 rounded-lg border bg-muted/30 text-sm">
-                        <div className="flex justify-between">
-                          <span className="font-mono font-medium">{r.return_number}</span>
-                          <span className="text-muted-foreground">{new Date(r.returned_at).toLocaleDateString("pt-AO")}</span>
-                        </div>
-                        {r.reason && <p className="text-muted-foreground mt-1">{r.reason}</p>}
-                        <p className="font-semibold mt-1">Total: {formatKz(Number(r.total_amount))}</p>
-                      </div>
-                    ))}
+              <ScrollArea className="flex-1 -mx-6 px-6">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div><span className="text-muted-foreground">Fornecedor:</span> {getSupplierName(detailGRN.supplier_id)}</div>
+                    <div><span className="text-muted-foreground">Data:</span> {new Date(detailGRN.received_at).toLocaleString("pt-AO")}</div>
+                    <div><span className="text-muted-foreground">Estado:</span> <Badge variant="outline" className={STATUS_COLORS[detailGRN.status]}>{STATUS_LABELS[detailGRN.status]}</Badge></div>
+                    <div><span className="text-muted-foreground">Total:</span> <strong>{formatKz(Number(detailGRN.total_amount))}</strong></div>
                   </div>
-                )}
-              </div>
+                  {detailGRN.notes && <p className="text-sm text-muted-foreground">{detailGRN.notes}</p>}
+                  <div className="overflow-auto">
+                    <Table>
+                      <TableHeader><TableRow><TableHead>Produto</TableHead><TableHead>SKU</TableHead><TableHead>Qtd</TableHead><TableHead>Custo</TableHead><TableHead>Total</TableHead></TableRow></TableHeader>
+                      <TableBody>
+                        {detailItems.map((i) => (
+                          <TableRow key={i.id}>
+                            <TableCell>{i.product_name}</TableCell>
+                            <TableCell className="text-muted-foreground">{i.sku ?? "—"}</TableCell>
+                            <TableCell>{i.quantity_received}</TableCell>
+                            <TableCell>{formatKz(i.unit_cost)}</TableCell>
+                            <TableCell>{formatKz(i.total_cost)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {grnReturns.filter((r) => r.grn_id === detailGRN.id).length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold">Devoluções</h4>
+                      {grnReturns.filter((r) => r.grn_id === detailGRN.id).map((r) => (
+                        <div key={r.id} className="p-3 rounded-lg border bg-muted/30 text-sm">
+                          <div className="flex justify-between">
+                            <span className="font-mono font-medium">{r.return_number}</span>
+                            <span className="text-muted-foreground">{new Date(r.returned_at).toLocaleDateString("pt-AO")}</span>
+                          </div>
+                          {r.reason && <p className="text-muted-foreground mt-1">{r.reason}</p>}
+                          <p className="font-semibold mt-1">Total: {formatKz(Number(r.total_amount))}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
             )}
           </DialogContent>
         </Dialog>
 
-        {/* GRN Form Dialog */}
+        {/* GRN Form Dialog — Fullscreen */}
         <Dialog open={grnDialog} onOpenChange={setGrnDialog}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] flex flex-col">
             <DialogHeader><DialogTitle>Novo Recebimento</DialogTitle></DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="grid grid-cols-2 gap-4">
+            <ScrollArea className="flex-1 -mx-6 px-6">
+              <div className="space-y-4 py-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Fornecedor *</Label>
+                    <Select value={grnForm.supplier_id} onValueChange={(v) => setGrnForm((f) => ({ ...f, supplier_id: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                      <SelectContent>{suppliers.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2"><Label>Notas</Label><Textarea value={grnForm.notes} onChange={(e) => setGrnForm((f) => ({ ...f, notes: e.target.value }))} rows={2} /></div>
+                </div>
                 <div className="space-y-2">
-                  <Label>Fornecedor *</Label>
-                  <Select value={grnForm.supplier_id} onValueChange={(v) => setGrnForm((f) => ({ ...f, supplier_id: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
-                    <SelectContent>{suppliers.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2"><Label>Notas</Label><Textarea value={grnForm.notes} onChange={(e) => setGrnForm((f) => ({ ...f, notes: e.target.value }))} rows={2} /></div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
                   <Label>Itens Recebidos</Label>
-                  <Button variant="outline" size="sm" onClick={addGrnItem} className="gap-1"><Plus className="w-3 h-3" /> Adicionar</Button>
-                </div>
-                <div className="rounded-lg border overflow-hidden">
-                  <Table>
-                    <TableHeader><TableRow><TableHead>Produto</TableHead><TableHead>SKU</TableHead><TableHead className="w-24">Qtd</TableHead><TableHead className="w-28">Custo</TableHead><TableHead className="w-28">Total</TableHead><TableHead className="w-10"></TableHead></TableRow></TableHeader>
-                    <TableBody>
-                      {grnItems.length === 0 ? (
-                        <TableRow><TableCell colSpan={6} className="text-center py-4 text-muted-foreground text-sm">Adicione itens recebidos</TableCell></TableRow>
-                      ) : grnItems.map((item, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell><Input value={item.product_name} onChange={(e) => updateGrnItem(idx, "product_name", e.target.value)} className="h-8" /></TableCell>
-                          <TableCell><Input value={item.sku} onChange={(e) => updateGrnItem(idx, "sku", e.target.value)} className="h-8" /></TableCell>
-                          <TableCell><Input type="number" value={item.quantity_received} onChange={(e) => updateGrnItem(idx, "quantity_received", Number(e.target.value))} className="h-8" min={1} /></TableCell>
-                          <TableCell><Input type="number" value={item.unit_cost} onChange={(e) => updateGrnItem(idx, "unit_cost", Number(e.target.value))} className="h-8" min={0} step="0.01" /></TableCell>
-                          <TableCell className="text-sm font-medium">{formatKz(item.total_cost)}</TableCell>
-                          <TableCell><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeGrnItem(idx)}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button></TableCell>
+                  <ProductSearchInput onSelect={handleProductSelect} dialogOpen={grnDialog} />
+                  <div className="rounded-lg border overflow-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Produto</TableHead>
+                          <TableHead>SKU</TableHead>
+                          <TableHead className="w-24">Qtd Caixas</TableHead>
+                          <TableHead className="w-24">Un/Caixa</TableHead>
+                          <TableHead className="w-28">Total Un.</TableHead>
+                          <TableHead className="w-28">Custo Unit.</TableHead>
+                          <TableHead className="w-28">Total</TableHead>
+                          <TableHead className="w-10"></TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {grnItems.length === 0 ? (
+                          <TableRow><TableCell colSpan={8} className="text-center py-4 text-muted-foreground text-sm">Pesquise ou escaneie produtos para adicionar</TableCell></TableRow>
+                        ) : grnItems.map((item, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="text-sm font-medium">{item.product_name}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{item.sku}</TableCell>
+                            <TableCell><Input type="number" value={item.box_quantity} onChange={(e) => updateGrnItem(idx, "box_quantity", Math.max(1, Number(e.target.value)))} className="h-8" min={1} /></TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{item.pack_size}</TableCell>
+                            <TableCell className="text-sm font-medium">{item.total_units}</TableCell>
+                            <TableCell><Input type="number" value={item.unit_cost} onChange={(e) => updateGrnItem(idx, "unit_cost", Number(e.target.value))} className="h-8" min={0} step="0.01" /></TableCell>
+                            <TableCell className="text-sm font-medium">{formatKz(item.total_cost)}</TableCell>
+                            <TableCell><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeGrnItem(idx)}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {grnItems.length > 0 && <div className="text-right text-sm font-semibold">Total: {formatKz(grnItems.reduce((s, i) => s + i.total_cost, 0))}</div>}
                 </div>
-                {grnItems.length > 0 && <div className="text-right text-sm font-semibold">Total: {formatKz(grnItems.reduce((s, i) => s + i.total_cost, 0))}</div>}
               </div>
-            </div>
-            <DialogFooter>
+            </ScrollArea>
+            <DialogFooter className="pt-4 border-t">
               <Button variant="outline" onClick={() => setGrnDialog(false)}>Cancelar</Button>
               <Button onClick={() => createGRN.mutate()} disabled={createGRN.isPending || !grnForm.supplier_id || grnItems.length === 0}>
                 {createGRN.isPending ? "A lançar..." : "Lançar Recebimento"}
@@ -413,39 +449,41 @@ export default function GoodsReceived() {
           </DialogContent>
         </Dialog>
 
-        {/* Return Dialog */}
+        {/* Return Dialog — Fullscreen */}
         <Dialog open={returnDialog} onOpenChange={setReturnDialog}>
-          <DialogContent className="max-w-xl">
+          <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] flex flex-col">
             <DialogHeader><DialogTitle>Devolução — {returnGRN?.grn_number}</DialogTitle></DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="space-y-2"><Label>Motivo da devolução</Label><Textarea value={returnReason} onChange={(e) => setReturnReason(e.target.value)} rows={2} /></div>
-              <div className="space-y-2">
-                <Label>Itens a devolver</Label>
-                <div className="rounded-lg border overflow-hidden">
-                  <Table>
-                    <TableHeader><TableRow><TableHead>Produto</TableHead><TableHead className="w-24">Máx</TableHead><TableHead className="w-28">Devolver</TableHead><TableHead className="w-28">Custo</TableHead></TableRow></TableHeader>
-                    <TableBody>
-                      {returnItems.map((item, idx) => (
-                        <TableRow key={item.grn_item_id}>
-                          <TableCell>{item.product_name}</TableCell>
-                          <TableCell className="text-muted-foreground">{item.max_qty}</TableCell>
-                          <TableCell>
-                            <Input type="number" value={item.quantity} min={0} max={item.max_qty}
-                              onChange={(e) => setReturnItems(returnItems.map((ri, i) => i === idx ? { ...ri, quantity: Math.min(Number(e.target.value), ri.max_qty) } : ri))}
-                              className="h-8" />
-                          </TableCell>
-                          <TableCell className="text-sm">{formatKz(item.quantity * item.unit_cost)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-                <div className="text-right text-sm font-semibold">
-                  Total devolução: {formatKz(returnItems.reduce((s, i) => s + i.quantity * i.unit_cost, 0))}
+            <ScrollArea className="flex-1 -mx-6 px-6">
+              <div className="space-y-4 py-2">
+                <div className="space-y-2"><Label>Motivo da devolução</Label><Textarea value={returnReason} onChange={(e) => setReturnReason(e.target.value)} rows={2} /></div>
+                <div className="space-y-2">
+                  <Label>Itens a devolver</Label>
+                  <div className="rounded-lg border overflow-auto">
+                    <Table>
+                      <TableHeader><TableRow><TableHead>Produto</TableHead><TableHead className="w-24">Máx</TableHead><TableHead className="w-28">Devolver</TableHead><TableHead className="w-28">Custo</TableHead></TableRow></TableHeader>
+                      <TableBody>
+                        {returnItems.map((item, idx) => (
+                          <TableRow key={item.grn_item_id}>
+                            <TableCell>{item.product_name}</TableCell>
+                            <TableCell className="text-muted-foreground">{item.max_qty}</TableCell>
+                            <TableCell>
+                              <Input type="number" value={item.quantity} min={0} max={item.max_qty}
+                                onChange={(e) => setReturnItems(returnItems.map((ri, i) => i === idx ? { ...ri, quantity: Math.min(Number(e.target.value), ri.max_qty) } : ri))}
+                                className="h-8" />
+                            </TableCell>
+                            <TableCell className="text-sm">{formatKz(item.quantity * item.unit_cost)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="text-right text-sm font-semibold">
+                    Total devolução: {formatKz(returnItems.reduce((s, i) => s + i.quantity * i.unit_cost, 0))}
+                  </div>
                 </div>
               </div>
-            </div>
-            <DialogFooter>
+            </ScrollArea>
+            <DialogFooter className="pt-4 border-t">
               <Button variant="outline" onClick={() => setReturnDialog(false)}>Cancelar</Button>
               <Button variant="destructive" onClick={() => createReturn.mutate()} disabled={createReturn.isPending || returnItems.every((i) => i.quantity === 0)}>
                 {createReturn.isPending ? "A processar..." : "Confirmar Devolução"}
