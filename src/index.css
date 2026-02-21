@@ -111,6 +111,17 @@
   body {
     @apply bg-background text-foreground font-sans;
     font-family: 'Inter', system-ui, sans-serif;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: url('/images/bg-angopos.jpeg') center center / cover no-repeat;
+    opacity: 0.04;
+    pointer-events: none;
+    z-index: 0;
   }
 
   /* Scrollbar styling */

@@ -41,6 +41,7 @@ import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import logoAngopos from "@/assets/logo-angopos.jpeg";
 
 interface MenuItem {
   title: string;
@@ -171,9 +172,7 @@ export function AppSidebar() {
       <div className="h-14 flex items-center px-4 border-b border-sidebar-border shrink-0">
         {!collapsed && (
           <div className="flex items-center gap-2 animate-fade-in">
-            <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center">
-              <Store className="w-4 h-4 text-sidebar-primary-foreground" />
-            </div>
+            <img src={logoAngopos} alt="AngoPOS" className="w-8 h-8 rounded-lg object-cover" />
             <div className="flex flex-col">
               <span className="text-sm font-semibold text-sidebar-accent-foreground leading-tight">AngoPos</span>
               <span className="text-[10px] text-sidebar-muted leading-tight">Gestão & POS</span>
