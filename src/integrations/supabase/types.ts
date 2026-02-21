@@ -137,6 +137,63 @@ export type Database = {
         }
         Relationships: []
       }
+      company_subscriptions: {
+        Row: {
+          cancelled_at: string | null
+          company_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          notes: string | null
+          plan_id: string
+          starts_at: string
+          status: Database["public"]["Enums"]["subscription_status"]
+          suspended_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          company_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          notes?: string | null
+          plan_id: string
+          starts_at?: string
+          status?: Database["public"]["Enums"]["subscription_status"]
+          suspended_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          company_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          notes?: string | null
+          plan_id?: string
+          starts_at?: string
+          status?: Database["public"]["Enums"]["subscription_status"]
+          suspended_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_subscriptions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       custom_role_permissions: {
         Row: {
           can_access: boolean
@@ -411,6 +468,24 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_admins: {
+        Row: {
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           barcode: string | null
@@ -679,6 +754,54 @@ export type Database = {
           },
         ]
       }
+      subscription_plans: {
+        Row: {
+          created_at: string
+          description: string | null
+          features: Json | null
+          id: string
+          interval: Database["public"]["Enums"]["plan_interval"]
+          is_active: boolean
+          max_branches: number
+          max_products: number
+          max_users: number
+          name: string
+          price: number
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          features?: Json | null
+          id?: string
+          interval?: Database["public"]["Enums"]["plan_interval"]
+          is_active?: boolean
+          max_branches?: number
+          max_products?: number
+          max_users?: number
+          name: string
+          price?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          features?: Json | null
+          id?: string
+          interval?: Database["public"]["Enums"]["plan_interval"]
+          is_active?: boolean
+          max_branches?: number
+          max_products?: number
+          max_users?: number
+          name?: string
+          price?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       suppliers: {
         Row: {
           address: string | null
@@ -805,6 +928,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_platform_admin: { Args: { _user_id: string }; Returns: boolean }
       register_company: {
         Args: {
           _company_email: string
@@ -827,12 +951,19 @@ export type Database = {
     Enums: {
       app_role: "admin" | "gestor" | "caixeiro" | "gestor_stock"
       grn_status: "received" | "returned" | "corrected"
+      plan_interval: "monthly" | "yearly"
       purchase_order_status:
         | "draft"
         | "sent"
         | "partial"
         | "received"
         | "cancelled"
+      subscription_status:
+        | "active"
+        | "suspended"
+        | "cancelled"
+        | "expired"
+        | "trial"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -962,12 +1093,20 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "gestor", "caixeiro", "gestor_stock"],
       grn_status: ["received", "returned", "corrected"],
+      plan_interval: ["monthly", "yearly"],
       purchase_order_status: [
         "draft",
         "sent",
         "partial",
         "received",
         "cancelled",
+      ],
+      subscription_status: [
+        "active",
+        "suspended",
+        "cancelled",
+        "expired",
+        "trial",
       ],
     },
   },
