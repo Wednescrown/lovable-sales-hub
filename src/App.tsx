@@ -8,6 +8,8 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import CompanyLogin from "./pages/auth/CompanyLogin";
 import ResetPassword from "./pages/auth/ResetPassword";
 import UserSelect from "./pages/auth/UserSelect";
+import PlatformLogin from "./pages/admin/PlatformLogin";
+import AdminDashboard from "./pages/admin/AdminDashboard";
 import Index from "./pages/Index";
 import Products from "./pages/Products";
 import Categories from "./pages/Categories";
@@ -39,6 +41,10 @@ const App = () => (
             <Route path="/auth/company" element={<CompanyLogin />} />
             <Route path="/auth/user-select" element={<UserSelect />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+
+            {/* Super Admin routes */}
+            <Route path="/admin" element={<PlatformLogin />} />
+            <Route path="/admin/dashboard" element={<AdminDashboard />} />
 
             {/* Protected routes */}
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
