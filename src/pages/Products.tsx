@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import {
-  Package, Search, Plus, Filter, Download, Upload, AlertTriangle, Edit, Trash2, Barcode, Eye, ShoppingCart, ChevronUp, ChevronDown, ArrowUpDown,
+  Package, Search, Plus, Filter, Download, Upload, AlertTriangle, Edit, Trash2, Barcode, Eye, ShoppingCart, ChevronUp, ChevronDown, ArrowUpDown, MoreVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useProducts, useProductMutations, type ProductRow } from "@/hooks/useProducts";
@@ -154,6 +155,8 @@ const Products = () => {
   };
 
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [bulkDeleteMode, setBulkDeleteMode] = useState<"filtered" | "all" | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const handleDelete = async (id: string) => {
     try {
@@ -164,7 +167,31 @@ const Products = () => {
     }
     setDeleteConfirm(null);
   };
-
+  const handleBulkDelete = async () => {
+    const toDelete = bulkDeleteMode === "all" ? products : filteredProducts;
+    if (toDelete.length === 0) {
+      setBulkDeleteMode(null);
+      return;
+    }
+    setBulkDeleting(true);
+    let deleted = 0;
+    let errors = 0;
+    for (const p of toDelete) {
+      try {
+        await deleteProduct.mutateAsync(p.id);
+        deleted++;
+      } catch {
+        errors++;
+      }
+    }
+    setBulkDeleting(false);
+    setBulkDeleteMode(null);
+    toast({
+      title: `${deleted} produto(s) eliminado(s)`,
+      description: errors > 0 ? `${errors} erro(s) durante a eliminação.` : undefined,
+      variant: errors > 0 ? "destructive" : undefined,
+    });
+  };
 
   const addToShoppingList = (productId: string, productName: string) => {
     if (shoppingList.includes(productId)) {
@@ -206,6 +233,32 @@ const Products = () => {
             </Button>
             <Button variant="outline" size="sm"><Download className="w-4 h-4 mr-1" />Exportar</Button>
             <Button size="sm" onClick={openCreateForm}><Plus className="w-4 h-4 mr-1" />Novo Produto</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-9 w-9">
+                  <MoreVertical className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  disabled={filteredProducts.length === 0}
+                  onClick={() => setBulkDeleteMode("filtered")}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Eliminar filtrados ({filteredProducts.length})
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  disabled={products.length === 0}
+                  onClick={() => setBulkDeleteMode("all")}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Eliminar todos ({products.length})
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
@@ -498,6 +551,33 @@ const Products = () => {
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
               <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => deleteConfirm && handleDelete(deleteConfirm.id)}>
                 Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Bulk Delete Confirmation */}
+        <AlertDialog open={!!bulkDeleteMode} onOpenChange={(open) => !open && !bulkDeleting && setBulkDeleteMode(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="w-5 h-5" />
+                {bulkDeleteMode === "all" ? "Eliminar Todos os Produtos" : "Eliminar Produtos Filtrados"}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {bulkDeleteMode === "all"
+                  ? `Tem certeza que deseja eliminar TODOS os ${products.length} produto(s) da base de dados? Esta ação é irreversível e apagará todo o catálogo.`
+                  : `Tem certeza que deseja eliminar os ${filteredProducts.length} produto(s) que correspondem aos filtros atuais? Esta ação não pode ser revertida.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={bulkDeleting}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={bulkDeleting}
+                onClick={handleBulkDelete}
+              >
+                {bulkDeleting ? "Eliminando..." : "Confirmar Eliminação"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
