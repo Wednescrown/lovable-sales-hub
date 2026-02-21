@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
@@ -41,7 +42,7 @@ const Products = () => {
 
   const [formData, setFormData] = useState({
     name: "", barcode: "", categoryId: "", subcategoryId: "",
-    costPrice: "", sellPrice: "", stock: "", minStock: "", packSize: "", unit: "un",
+    costPrice: "", sellPrice: "", minStock: "", packSize: "", unit: "un",
   });
 
   const filteredProducts = products.filter((p) => {
@@ -64,7 +65,7 @@ const Products = () => {
 
   const openCreateForm = () => {
     setEditProduct(null);
-    setFormData({ name: "", barcode: "", categoryId: "", subcategoryId: "", costPrice: "", sellPrice: "", stock: "", minStock: "", packSize: "", unit: "un" });
+    setFormData({ name: "", barcode: "", categoryId: "", subcategoryId: "", costPrice: "", sellPrice: "", minStock: "", packSize: "", unit: "un" });
     setFormOpen(true);
   };
 
@@ -77,7 +78,6 @@ const Products = () => {
       subcategoryId: product.subcategory_id || "",
       costPrice: product.cost_price.toString(),
       sellPrice: product.sell_price.toString(),
-      stock: product.stock.toString(),
       minStock: product.min_stock.toString(),
       packSize: product.pack_size.toString(),
       unit: product.unit,
@@ -99,7 +99,6 @@ const Products = () => {
         subcategory_id: formData.subcategoryId || undefined,
         cost_price: Number(formData.costPrice) || 0,
         sell_price: Number(formData.sellPrice) || 0,
-        stock: Number(formData.stock) || 0,
         min_stock: Number(formData.minStock) || 0,
         pack_size: Number(formData.packSize) || 1,
         unit: formData.unit,
@@ -465,6 +464,24 @@ const Products = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Eliminar Produto</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja eliminar <strong>{deleteConfirm?.name}</strong>? Esta ação não pode ser revertida.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => deleteConfirm && handleDelete(deleteConfirm.id)}>
+                Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Import Dialog */}
         <Dialog open={importOpen} onOpenChange={setImportOpen}>
