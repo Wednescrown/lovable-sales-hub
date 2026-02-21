@@ -68,7 +68,6 @@ export function useProductMutations() {
       subcategory_id?: string;
       cost_price: number;
       sell_price: number;
-      stock: number;
       min_stock: number;
       pack_size: number;
       unit: string;
