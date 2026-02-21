@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
-import { PackageCheck, Search, AlertTriangle, Package, TrendingDown, DollarSign } from "lucide-react";
+import { PackageCheck, Search, AlertTriangle, Package, TrendingDown, DollarSign, Upload, ChevronUp, ChevronDown, ArrowUpDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useProducts, type ProductRow } from "@/hooks/useProducts";
 import { useCategories, useAllSubcategories } from "@/hooks/useCategories";
+import { StockImportDialog } from "@/components/stock/StockImportDialog";
 
 function formatKz(value: number) {
   return value.toLocaleString("pt-AO") + " Kz";
@@ -27,6 +29,9 @@ const statusLabels: Record<StockStatus, string> = {
   out: "Sem Stock",
 };
 
+type SortField = "name" | "sku" | "category" | "stock" | "min_stock" | "cost_price" | "total_value" | "status";
+type SortDirection = "asc" | "desc";
+
 const StockAvailable = () => {
   const { data: products = [], isLoading } = useProducts();
   const { data: categories = [] } = useCategories();
@@ -36,6 +41,23 @@ const StockAvailable = () => {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subcategoryFilter, setSubcategoryFilter] = useState("all");
   const [stockStatusFilter, setStockStatusFilter] = useState<"all" | StockStatus>("all");
+  const [importOpen, setImportOpen] = useState(false);
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-40" />;
+    return sortDirection === "asc" ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />;
+  };
 
   const activeProducts = products.filter((p) => p.status === "active");
 
@@ -47,6 +69,25 @@ const StockAvailable = () => {
     const matchSubcategory = subcategoryFilter === "all" || p.subcategory_id === subcategoryFilter;
     const matchStatus = stockStatusFilter === "all" || getStockStatus(p) === stockStatusFilter;
     return matchSearch && matchCategory && matchSubcategory && matchStatus;
+  });
+
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
+    if (!sortField) return 0;
+    const dir = sortDirection === "asc" ? 1 : -1;
+    switch (sortField) {
+      case "name": return dir * a.name.localeCompare(b.name);
+      case "sku": return dir * a.sku.localeCompare(b.sku);
+      case "category": return dir * (a.category_name || "").localeCompare(b.category_name || "");
+      case "stock": return dir * (a.stock - b.stock);
+      case "min_stock": return dir * (a.min_stock - b.min_stock);
+      case "cost_price": return dir * (a.cost_price - b.cost_price);
+      case "total_value": return dir * ((a.stock * a.cost_price) - (b.stock * b.cost_price));
+      case "status": {
+        const order: Record<StockStatus, number> = { out: 0, low: 1, normal: 2 };
+        return dir * (order[getStockStatus(a)] - order[getStockStatus(b)]);
+      }
+      default: return 0;
+    }
   });
 
   const totalProducts = activeProducts.length;
@@ -72,12 +113,17 @@ const StockAvailable = () => {
     <AppLayout>
       <div className="p-6 space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <PackageCheck className="w-5 h-5 text-primary" />
-            Estoque Disponível
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Visão geral do stock actual de todos os produtos</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
+              <PackageCheck className="w-5 h-5 text-primary" />
+              Estoque Disponível
+            </h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Visão geral do stock actual de todos os produtos</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+            <Upload className="w-4 h-4 mr-1" />Importar Stock
+          </Button>
         </div>
 
         {/* KPI Cards */}
@@ -166,26 +212,26 @@ const StockAvailable = () => {
         {/* Table */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">Produtos ({filteredProducts.length})</CardTitle>
+            <CardTitle className="text-sm font-semibold">Produtos ({sortedProducts.length})</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[50px]">#</TableHead>
-                  <TableHead>Produto</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead className="text-center">Stock Actual</TableHead>
-                  <TableHead className="text-center">Stock Mínimo</TableHead>
-                  <TableHead className="text-right">Valor Custo</TableHead>
-                  <TableHead className="text-right">Valor Total</TableHead>
-                  <TableHead className="text-center">Estado</TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("name")}><span className="flex items-center">Produto<SortIcon field="name" /></span></TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("sku")}><span className="flex items-center">SKU<SortIcon field="sku" /></span></TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("category")}><span className="flex items-center">Categoria<SortIcon field="category" /></span></TableHead>
+                  <TableHead className="text-center cursor-pointer select-none" onClick={() => toggleSort("stock")}><span className="flex items-center justify-center">Stock Actual<SortIcon field="stock" /></span></TableHead>
+                  <TableHead className="text-center cursor-pointer select-none" onClick={() => toggleSort("min_stock")}><span className="flex items-center justify-center">Stock Mínimo<SortIcon field="min_stock" /></span></TableHead>
+                  <TableHead className="text-right cursor-pointer select-none" onClick={() => toggleSort("cost_price")}><span className="flex items-center justify-end">Valor Custo<SortIcon field="cost_price" /></span></TableHead>
+                  <TableHead className="text-right cursor-pointer select-none" onClick={() => toggleSort("total_value")}><span className="flex items-center justify-end">Valor Total<SortIcon field="total_value" /></span></TableHead>
+                  <TableHead className="text-center cursor-pointer select-none" onClick={() => toggleSort("status")}><span className="flex items-center justify-center">Estado<SortIcon field="status" /></span></TableHead>
                   <TableHead className="text-center">Cobertura</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredProducts.map((product, idx) => {
+                {sortedProducts.map((product, idx) => {
                   const status = getStockStatus(product);
                   const totalValue = product.stock * product.cost_price;
                   return (
@@ -233,6 +279,8 @@ const StockAvailable = () => {
             </Table>
           </CardContent>
         </Card>
+        {/* Import Stock Dialog */}
+        <StockImportDialog open={importOpen} onOpenChange={setImportOpen} />
       </div>
     </AppLayout>
   );

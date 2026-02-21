@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import {
-  Package, Search, Plus, Filter, Download, Upload, AlertTriangle, Edit, Trash2, Barcode, Eye, ShoppingCart,
+  Package, Search, Plus, Filter, Download, Upload, AlertTriangle, Edit, Trash2, Barcode, Eye, ShoppingCart, ChevronUp, ChevronDown, ArrowUpDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,9 @@ function formatKz(value: number) {
   return value.toLocaleString("pt-AO") + " Kz";
 }
 
+type ProdSortField = "name" | "sku" | "barcode" | "category" | "cost_price" | "sell_price" | "stock" | "status";
+type SortDirection = "asc" | "desc";
+
 const Products = () => {
   const { toast } = useToast();
   const { data: products = [], isLoading } = useProducts();
@@ -38,6 +41,22 @@ const Products = () => {
   const [importOpen, setImportOpen] = useState(false);
   const [shoppingList, setShoppingList] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [sortField, setSortField] = useState<ProdSortField | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+
+  const toggleSort = (field: ProdSortField) => {
+    if (sortField === field) {
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const PSortIcon = ({ field }: { field: ProdSortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-40" />;
+    return sortDirection === "asc" ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />;
+  };
 
   const [formData, setFormData] = useState({
     name: "", barcode: "", categoryId: "", subcategoryId: "",
@@ -54,6 +73,22 @@ const Products = () => {
     const isLowStock = p.stock <= p.min_stock;
     const matchLowStock = !lowStockOnly || isLowStock;
     return matchSearch && matchCategory && matchStatus && matchLowStock;
+  });
+
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
+    if (!sortField) return 0;
+    const dir = sortDirection === "asc" ? 1 : -1;
+    switch (sortField) {
+      case "name": return dir * a.name.localeCompare(b.name);
+      case "sku": return dir * a.sku.localeCompare(b.sku);
+      case "barcode": return dir * (a.barcode || "").localeCompare(b.barcode || "");
+      case "category": return dir * (a.category_name || "").localeCompare(b.category_name || "");
+      case "cost_price": return dir * (a.cost_price - b.cost_price);
+      case "sell_price": return dir * (a.sell_price - b.sell_price);
+      case "stock": return dir * (a.stock - b.stock);
+      case "status": return dir * a.status.localeCompare(b.status);
+      default: return 0;
+    }
   });
 
   const totalProducts = products.length;
@@ -241,26 +276,26 @@ const Products = () => {
         {/* Table */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">Produtos ({filteredProducts.length})</CardTitle>
+            <CardTitle className="text-sm font-semibold">Produtos ({sortedProducts.length})</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[50px]">#</TableHead>
-                  <TableHead>Produto</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Cód. Barras</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead className="text-right">Custo</TableHead>
-                  <TableHead className="text-right">Venda</TableHead>
-                  <TableHead className="text-center">Estoque</TableHead>
-                  <TableHead className="text-center">Status</TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("name")}><span className="flex items-center">Produto<PSortIcon field="name" /></span></TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("sku")}><span className="flex items-center">SKU<PSortIcon field="sku" /></span></TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("barcode")}><span className="flex items-center">Cód. Barras<PSortIcon field="barcode" /></span></TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("category")}><span className="flex items-center">Categoria<PSortIcon field="category" /></span></TableHead>
+                  <TableHead className="text-right cursor-pointer select-none" onClick={() => toggleSort("cost_price")}><span className="flex items-center justify-end">Custo<PSortIcon field="cost_price" /></span></TableHead>
+                  <TableHead className="text-right cursor-pointer select-none" onClick={() => toggleSort("sell_price")}><span className="flex items-center justify-end">Venda<PSortIcon field="sell_price" /></span></TableHead>
+                  <TableHead className="text-center cursor-pointer select-none" onClick={() => toggleSort("stock")}><span className="flex items-center justify-center">Estoque<PSortIcon field="stock" /></span></TableHead>
+                  <TableHead className="text-center cursor-pointer select-none" onClick={() => toggleSort("status")}><span className="flex items-center justify-center">Status<PSortIcon field="status" /></span></TableHead>
                   <TableHead className="text-center w-[130px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredProducts.map((product, idx) => {
+                {sortedProducts.map((product, idx) => {
                   const isLowStock = product.stock <= product.min_stock;
                   return (
                     <TableRow key={product.id} className={isLowStock ? "bg-destructive/5" : ""}>
