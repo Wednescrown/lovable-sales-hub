@@ -1,120 +1,84 @@
 
-# Migrar para Base de Dados + Melhorias em Gestao de Produtos e Estoque
+
+# Importacao de Quantidades em Estoque + Ordenacao de Tabelas
 
 ## Resumo
 
-Substituir todos os dados mock (`mockProducts`, `mockCategories`, `mockInventory`) por dados reais do Supabase em todas as paginas. Remover o campo "Estoque" do formulario de produtos, adicionar confirmacao ao eliminar produtos, e criar a pagina de Estoque Disponivel.
+Duas funcionalidades serao adicionadas:
 
-## Alteracoes
+1. **Importacao de Stock** na pagina Estoque Disponivel (`/estoque`) -- um dialogo wizard (3 passos) que permite carregar um ficheiro CSV/Excel com quantidades, fazer o link entre barcode/SKU do sistema e a coluna de quantidade do ficheiro, e actualizar o stock dos produtos correspondentes.
 
-### 1. Tipo de Produto unificado
+2. **Ordenacao de colunas** nas tabelas de Gestao de Produtos e Estoque Disponivel -- clicar no cabecalho de qualquer coluna para ordenar ascendente/descendente.
 
-Criar um tipo `Product` compativel com a base de dados (baseado em `ProductRow`) e eliminar o tipo `Product` do `mockProducts.ts`. O novo tipo sera exportado de `useProducts.ts` e reutilizado em todo o sistema.
+---
 
-Campos mapeados:
-- `id`, `name`, `sku`, `barcode`, `category_id`, `subcategory_id`, `cost_price`, `sell_price`, `stock`, `min_stock`, `pack_size`, `unit`, `status`
-- `category_name`, `subcategory_name` (joins)
+## 1. Importacao de Quantidades (Stock)
 
-### 2. POS — Usar produtos da BD
+### Fluxo do wizard (3 passos)
 
-**`POSProductGrid.tsx`**:
-- Receber `products` e `categories` como props em vez de importar mocks
-- Adaptar campos: `sellPrice` -> `sell_price`, `categoryId` -> `category_id`, etc.
+1. **Upload** -- o utilizador seleciona um ficheiro CSV/Excel
+2. **Mapeamento** -- o sistema mostra os cabecalhos do ficheiro e pede ao utilizador para selecionar:
+   - Qual coluna do ficheiro corresponde ao **Codigo de Barras** ou **SKU** (campo de ligacao, obrigatorio escolher pelo menos um)
+   - Qual coluna corresponde a **Quantidade** (obrigatorio)
+3. **Pre-visualizacao e Importacao** -- mostra a correspondencia encontrada entre os produtos do sistema e as linhas do ficheiro, com a quantidade actual vs nova quantidade. Ao confirmar, actualiza `products.stock` via Supabase `updateProduct`.
 
-**`POS.tsx`**:
-- Importar `useProducts` e `useCategories` para obter dados reais
-- Passar dados como props ao `POSProductGrid`
-- Actualizar barcode scan para pesquisar nos produtos da BD
-- Adaptar `POSCart` e `POSPaymentDialog` para o novo tipo
+### Componente novo
 
-**`POSCart.tsx`**:
-- Actualizar referencia ao tipo `Product` para usar `ProductRow`
-- Adaptar campos (`sellPrice` -> `sell_price`)
+- `src/components/stock/StockImportDialog.tsx` -- reutiliza o mesmo estilo visual do `ProductImportDialog` (wizard com steps, badges, tabela de mapeamento)
 
-### 3. PurchaseOrders e GoodsReceived — Usar produtos da BD
+### Campos do sistema para mapeamento
 
-**`ProductSearchInput.tsx`** (componente partilhado):
-- Receber `products: ProductRow[]` como prop em vez de importar `mockProducts`
-- Adaptar campos de pesquisa e barcode scan
-- Adaptar `onSelect` para devolver `ProductRow`
+| Campo Sistema | Obrigatorio | Descricao |
+|---|---|---|
+| Codigo de Barras (barcode) | Sim* | Usado para fazer match com o produto |
+| SKU | Sim* | Alternativa ao barcode para match |
+| Quantidade (stock) | Sim | Nova quantidade a importar |
 
-**`PurchaseOrders.tsx`**:
-- Importar `useProducts` para buscar produtos reais
-- Passar produtos ao `ProductSearchInput`
-- Adaptar `handleProductSelect` para usar `ProductRow` (`cost_price`, `pack_size`, etc.)
+*Pelo menos um dos dois (barcode ou SKU) deve ser mapeado.
 
-**`GoodsReceived.tsx`**:
-- Mesmas alteracoes que `PurchaseOrders`
+### Logica de match e actualizacao
 
-### 4. StockAdjustment e StockCount — Usar produtos da BD
+- Para cada linha do ficheiro, procura no array de produtos carregados (`useProducts`) um produto cujo `barcode` ou `sku` corresponda ao valor do ficheiro
+- Se encontrar match, actualiza `products.stock` com a quantidade do ficheiro usando `updateProduct.mutateAsync`
+- Linha a linha, mostrando progresso
+- Produtos sem correspondencia sao contados como "nao encontrados" e mostrados no resumo
 
-**`StockAdjustment.tsx`**:
-- Substituir `mockProducts` por `useProducts()`
-- Substituir `mockStores` por dados de `branches` (query Supabase)
-- Adaptar campos
+### Integracao na pagina StockAvailable
 
-**`StockCount.tsx`**:
-- Substituir `mockProducts` por `useProducts()`
-- Substituir `mockStores` por `branches`
-- Adaptar campos
+- Adicionar botao "Importar Stock" no cabecalho da pagina, ao lado do titulo
+- Abrir o `StockImportDialog` ao clicar
 
-### 5. Labels — Usar produtos da BD
+---
 
-**`Labels.tsx`**:
-- Substituir `mockProducts` por `useProducts()`
-- Adaptar campos
+## 2. Ordenacao de Colunas
 
-### 6. Eliminar ficheiros mock
+### Hook reutilizavel
 
-- Eliminar `src/data/mockProducts.ts`
-- Actualizar `src/data/mockInventory.ts` para remover dependencia de mockProducts (manter tipos e constantes uteis como `adjustmentReasonLabels`, mover `Store` para usar `branches`)
+Criar um pequeno hook ou logica local de ordenacao com estado `sortField` e `sortDirection` (`asc` | `desc`).
 
-### 7. Gestao de Produtos — Melhorias
+### Cabecalhos clicaveis
 
-**Remover campo "Estoque Inicial"** do formulario de criacao/edicao em `Products.tsx`:
-- Remover o campo `stock` do formulario (o stock sera gerido apenas por recebimentos e ajustes)
-- Manter `min_stock` (alerta de estoque baixo)
+Nos `TableHead` de ambas as tabelas (Products e StockAvailable), adicionar um handler `onClick` que alterna a ordenacao. Mostrar um icone de seta (ChevronUp/ChevronDown) no cabecalho activo.
 
-**Confirmacao ao eliminar produto**:
-- Adicionar `AlertDialog` de confirmacao antes de eliminar um produto
-- Mostrar nome do produto na mensagem de confirmacao
+### Colunas ordenaveis
 
-### 8. Pagina "Estoque Disponivel"
+**Gestao de Produtos:**
+- Produto (nome), SKU, Codigo de Barras, Categoria, Custo, Venda, Estoque, Status
 
-Criar `src/pages/StockAvailable.tsx`:
-- Listar todos os produtos com stock actual, stock minimo, estado (normal/baixo/sem stock)
-- Filtros: categoria, subcategoria, estado de stock
-- KPI cards: total produtos, produtos com stock baixo, produtos sem stock, valor total em stock
-- Coluna de "Cobertura" (dias estimados baseado em vendas — placeholder por agora)
-- Rota: `/estoque` em `App.tsx`
+**Estoque Disponivel:**
+- Produto (nome), SKU, Categoria, Stock Actual, Stock Minimo, Valor Custo, Valor Total, Estado
 
-### 9. Ficheiros a criar/editar
+---
 
-| Ficheiro | Accao |
-|---|---|
-| `src/hooks/useProducts.ts` | Editar — exportar tipo `ProductRow` como tipo principal |
-| `src/components/pos/POSProductGrid.tsx` | Editar — receber dados por props |
-| `src/components/pos/POSCart.tsx` | Editar — adaptar tipo |
-| `src/pages/POS.tsx` | Editar — usar `useProducts` e `useCategories` |
-| `src/components/compras/ProductSearchInput.tsx` | Editar — receber produtos por props |
-| `src/pages/PurchaseOrders.tsx` | Editar — usar produtos da BD |
-| `src/pages/GoodsReceived.tsx` | Editar — usar produtos da BD |
-| `src/pages/StockAdjustment.tsx` | Editar — usar produtos da BD |
-| `src/pages/StockCount.tsx` | Editar — usar produtos da BD |
-| `src/pages/Labels.tsx` | Editar — usar produtos da BD |
-| `src/pages/Products.tsx` | Editar — remover stock do form, adicionar AlertDialog de eliminacao |
-| `src/pages/StockAvailable.tsx` | Criar — pagina de estoque disponivel |
-| `src/App.tsx` | Editar — adicionar rota `/estoque` |
-| `src/data/mockProducts.ts` | Eliminar |
-| `src/data/mockInventory.ts` | Editar — remover dependencia de mockProducts |
+## Detalhes Tecnicos
 
-### 10. Sequencia de implementacao
+### Ficheiros a criar
+- `src/components/stock/StockImportDialog.tsx` -- dialogo wizard de importacao de stock
 
-1. Actualizar `useProducts.ts` com tipo unificado
-2. Actualizar `ProductSearchInput.tsx` para receber props
-3. Actualizar `POSProductGrid.tsx`, `POSCart.tsx`, `POS.tsx`
-4. Actualizar `PurchaseOrders.tsx` e `GoodsReceived.tsx`
-5. Actualizar `StockAdjustment.tsx`, `StockCount.tsx`, `Labels.tsx`
-6. Melhorar `Products.tsx` (remover stock, AlertDialog)
-7. Criar `StockAvailable.tsx` e registar rota
-8. Eliminar `mockProducts.ts` e limpar `mockInventory.ts`
+### Ficheiros a editar
+- `src/pages/StockAvailable.tsx` -- adicionar botao de importacao + logica de ordenacao de colunas
+- `src/pages/Products.tsx` -- adicionar logica de ordenacao de colunas
+
+### Dependencias
+- Nenhuma nova dependencia necessaria -- reutiliza componentes UI existentes e `useProducts`/`useProductMutations`
+
