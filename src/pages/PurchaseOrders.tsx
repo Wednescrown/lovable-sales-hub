@@ -24,6 +24,8 @@ import {
   Search, Plus, Edit, FileText, Trash2, PackageCheck,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { ProductSearchInput } from "@/components/compras/ProductSearchInput";
+import { Product } from "@/data/mockProducts";
 
 interface Supplier { id: string; name: string; }
 interface PurchaseOrder {
@@ -32,8 +34,10 @@ interface PurchaseOrder {
   total_amount: number; created_at: string;
 }
 interface POItem {
-  id?: string; product_name: string; sku: string; quantity_ordered: number;
+  id?: string; product_name: string; sku: string;
+  box_quantity: number; pack_size: number; total_units: number;
   unit_cost: number; total_cost: number;
+  quantity_ordered: number; // = total_units, for DB compat
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -84,21 +88,18 @@ export default function PurchaseOrders() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (selected) {
-        // Update order
         const totalAmount = items.reduce((s, i) => s + i.total_cost, 0);
         const { error } = await (supabase as any).from("purchase_orders")
           .update({ supplier_id: form.supplier_id, notes: form.notes || null, expected_date: form.expected_date || null, total_amount: totalAmount })
           .eq("id", selected.id);
         if (error) throw error;
-        // Delete old items and insert new
         await (supabase as any).from("purchase_order_items").delete().eq("purchase_order_id", selected.id);
         if (items.length > 0) {
-          const rows = items.map((i) => ({ purchase_order_id: selected.id, product_name: i.product_name, sku: i.sku, quantity_ordered: i.quantity_ordered, unit_cost: i.unit_cost, total_cost: i.total_cost, quantity_received: 0 }));
+          const rows = items.map((i) => ({ purchase_order_id: selected.id, product_name: i.product_name, sku: i.sku, quantity_ordered: i.total_units, unit_cost: i.unit_cost, total_cost: i.total_cost, quantity_received: 0 }));
           const { error: ie } = await (supabase as any).from("purchase_order_items").insert(rows);
           if (ie) throw ie;
         }
       } else {
-        // Generate order number
         const { data: numData, error: numErr } = await (supabase as any).rpc("generate_next_order_number", { _company_id: companyId });
         if (numErr) throw numErr;
         const totalAmount = items.reduce((s, i) => s + i.total_cost, 0);
@@ -107,7 +108,7 @@ export default function PurchaseOrders() {
           .select("id").single();
         if (error) throw error;
         if (items.length > 0) {
-          const rows = items.map((i) => ({ purchase_order_id: newOrder.id, product_name: i.product_name, sku: i.sku, quantity_ordered: i.quantity_ordered, unit_cost: i.unit_cost, total_cost: i.total_cost, quantity_received: 0 }));
+          const rows = items.map((i) => ({ purchase_order_id: newOrder.id, product_name: i.product_name, sku: i.sku, quantity_ordered: i.total_units, unit_cost: i.unit_cost, total_cost: i.total_cost, quantity_received: 0 }));
           const { error: ie } = await (supabase as any).from("purchase_order_items").insert(rows);
           if (ie) throw ie;
         }
@@ -143,18 +144,46 @@ export default function PurchaseOrders() {
     setSelected(o);
     setForm({ supplier_id: o.supplier_id, notes: o.notes ?? "", expected_date: o.expected_date ?? "" });
     const { data } = await (supabase as any).from("purchase_order_items").select("*").eq("purchase_order_id", o.id);
-    setItems((data ?? []).map((i: any) => ({ id: i.id, product_name: i.product_name, sku: i.sku ?? "", quantity_ordered: Number(i.quantity_ordered), unit_cost: Number(i.unit_cost), total_cost: Number(i.total_cost) })));
+    setItems((data ?? []).map((i: any) => ({
+      id: i.id, product_name: i.product_name, sku: i.sku ?? "",
+      box_quantity: Number(i.quantity_ordered), pack_size: 1, total_units: Number(i.quantity_ordered),
+      unit_cost: Number(i.unit_cost), total_cost: Number(i.total_cost),
+      quantity_ordered: Number(i.quantity_ordered),
+    })));
     setDialogOpen(true);
   };
 
-  const addItem = () => setItems([...items, { product_name: "", sku: "", quantity_ordered: 1, unit_cost: 0, total_cost: 0 }]);
+  const handleProductSelect = (product: Product) => {
+    setItems((prev) => {
+      const existing = prev.findIndex((i) => i.sku === product.sku);
+      if (existing >= 0) {
+        return prev.map((item, idx) => {
+          if (idx !== existing) return item;
+          const newBoxQty = item.box_quantity + 1;
+          const newTotalUnits = newBoxQty * item.pack_size;
+          return { ...item, box_quantity: newBoxQty, total_units: newTotalUnits, quantity_ordered: newTotalUnits, total_cost: newTotalUnits * item.unit_cost };
+        });
+      }
+      const newItem: POItem = {
+        product_name: product.name, sku: product.sku,
+        box_quantity: 1, pack_size: product.packSize,
+        total_units: product.packSize,
+        unit_cost: product.costPrice, total_cost: product.packSize * product.costPrice,
+        quantity_ordered: product.packSize,
+      };
+      return [...prev, newItem];
+    });
+  };
+
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
-  const updateItem = (idx: number, field: string, value: string | number) => {
+  const updateItem = (idx: number, field: string, value: number) => {
     setItems(items.map((item, i) => {
       if (i !== idx) return item;
       const updated = { ...item, [field]: value };
-      if (field === "quantity_ordered" || field === "unit_cost") {
-        updated.total_cost = Number(updated.quantity_ordered) * Number(updated.unit_cost);
+      if (field === "box_quantity" || field === "unit_cost") {
+        updated.total_units = updated.box_quantity * updated.pack_size;
+        updated.quantity_ordered = updated.total_units;
+        updated.total_cost = updated.total_units * updated.unit_cost;
       }
       return updated;
     }));
@@ -240,68 +269,72 @@ export default function PurchaseOrders() {
           </ScrollArea>
         </Card>
 
-        {/* Create/Edit Dialog */}
+        {/* Create/Edit Dialog — Fullscreen */}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] flex flex-col">
             <DialogHeader><DialogTitle>{selected ? `Editar ${selected.order_number}` : "Nova Ordem de Compra"}</DialogTitle></DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Fornecedor *</Label>
-                  <Select value={form.supplier_id} onValueChange={(v) => setForm((f) => ({ ...f, supplier_id: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
-                    <SelectContent>{suppliers.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Data Prevista</Label>
-                  <Input type="date" value={form.expected_date} onChange={(e) => setForm((f) => ({ ...f, expected_date: e.target.value }))} />
-                </div>
-              </div>
-              <div className="space-y-2"><Label>Notas</Label><Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} /></div>
-
-              {/* Items */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Itens</Label>
-                  <Button variant="outline" size="sm" onClick={addItem} className="gap-1"><Plus className="w-3 h-3" /> Adicionar</Button>
-                </div>
-                <div className="rounded-lg border overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Produto</TableHead>
-                        <TableHead>SKU</TableHead>
-                        <TableHead className="w-24">Qtd</TableHead>
-                        <TableHead className="w-28">Custo Unit.</TableHead>
-                        <TableHead className="w-28">Total</TableHead>
-                        <TableHead className="w-10"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {items.length === 0 ? (
-                        <TableRow><TableCell colSpan={6} className="text-center py-4 text-muted-foreground text-sm">Adicione itens à ordem</TableCell></TableRow>
-                      ) : items.map((item, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell><Input value={item.product_name} onChange={(e) => updateItem(idx, "product_name", e.target.value)} placeholder="Nome do produto" className="h-8" /></TableCell>
-                          <TableCell><Input value={item.sku} onChange={(e) => updateItem(idx, "sku", e.target.value)} placeholder="SKU" className="h-8" /></TableCell>
-                          <TableCell><Input type="number" value={item.quantity_ordered} onChange={(e) => updateItem(idx, "quantity_ordered", Number(e.target.value))} className="h-8" min={1} /></TableCell>
-                          <TableCell><Input type="number" value={item.unit_cost} onChange={(e) => updateItem(idx, "unit_cost", Number(e.target.value))} className="h-8" min={0} step="0.01" /></TableCell>
-                          <TableCell className="text-sm font-medium">{formatKz(item.total_cost)}</TableCell>
-                          <TableCell><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeItem(idx)}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button></TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-                {items.length > 0 && (
-                  <div className="text-right text-sm font-semibold">
-                    Total: {formatKz(items.reduce((s, i) => s + i.total_cost, 0))}
+            <ScrollArea className="flex-1 -mx-6 px-6">
+              <div className="space-y-4 py-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Fornecedor *</Label>
+                    <Select value={form.supplier_id} onValueChange={(v) => setForm((f) => ({ ...f, supplier_id: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                      <SelectContent>{suppliers.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent>
+                    </Select>
                   </div>
-                )}
+                  <div className="space-y-2">
+                    <Label>Data Prevista</Label>
+                    <Input type="date" value={form.expected_date} onChange={(e) => setForm((f) => ({ ...f, expected_date: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="space-y-2"><Label>Notas</Label><Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} /></div>
+
+                {/* Items */}
+                <div className="space-y-2">
+                  <Label>Itens</Label>
+                  <ProductSearchInput onSelect={handleProductSelect} dialogOpen={dialogOpen} />
+                  <div className="rounded-lg border overflow-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Produto</TableHead>
+                          <TableHead>SKU</TableHead>
+                          <TableHead className="w-24">Qtd Caixas</TableHead>
+                          <TableHead className="w-24">Un/Caixa</TableHead>
+                          <TableHead className="w-28">Total Un.</TableHead>
+                          <TableHead className="w-28">Custo Unit.</TableHead>
+                          <TableHead className="w-28">Total</TableHead>
+                          <TableHead className="w-10"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {items.length === 0 ? (
+                          <TableRow><TableCell colSpan={8} className="text-center py-4 text-muted-foreground text-sm">Pesquise ou escaneie produtos para adicionar</TableCell></TableRow>
+                        ) : items.map((item, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="text-sm font-medium">{item.product_name}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{item.sku}</TableCell>
+                            <TableCell><Input type="number" value={item.box_quantity} onChange={(e) => updateItem(idx, "box_quantity", Math.max(1, Number(e.target.value)))} className="h-8" min={1} /></TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{item.pack_size}</TableCell>
+                            <TableCell className="text-sm font-medium">{item.total_units}</TableCell>
+                            <TableCell><Input type="number" value={item.unit_cost} onChange={(e) => updateItem(idx, "unit_cost", Number(e.target.value))} className="h-8" min={0} step="0.01" /></TableCell>
+                            <TableCell className="text-sm font-medium">{formatKz(item.total_cost)}</TableCell>
+                            <TableCell><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeItem(idx)}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {items.length > 0 && (
+                    <div className="text-right text-sm font-semibold">
+                      Total: {formatKz(items.reduce((s, i) => s + i.total_cost, 0))}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-            <DialogFooter>
+            </ScrollArea>
+            <DialogFooter className="pt-4 border-t">
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
               <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !form.supplier_id || items.length === 0}>
                 {saveMutation.isPending ? "A guardar..." : "Guardar"}
