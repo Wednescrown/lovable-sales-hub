@@ -120,6 +120,8 @@ const Products = () => {
     }
   };
 
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+
   const handleDelete = async (id: string) => {
     try {
       await deleteProduct.mutateAsync(id);
@@ -127,6 +129,7 @@ const Products = () => {
     } catch (e: any) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
     }
+    setDeleteConfirm(null);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -332,7 +335,7 @@ const Products = () => {
                           >
                             <ShoppingCart className="w-3.5 h-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleDelete(product.id)}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteConfirm({ id: product.id, name: product.name })}>
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
@@ -428,11 +431,7 @@ const Products = () => {
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-4">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="stock" className="text-xs">Estoque Inicial</Label>
-                  <Input id="stock" type="number" placeholder="0" value={formData.stock} onChange={(e) => setFormData({ ...formData, stock: e.target.value })} className="h-9" />
-                </div>
+              <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-1.5">
                   <Label htmlFor="minStock" className="text-xs flex items-center gap-1"><AlertTriangle className="w-3 h-3 text-warning" />Alerta Estoque Baixo</Label>
                   <Input id="minStock" type="number" placeholder="0" value={formData.minStock} onChange={(e) => setFormData({ ...formData, minStock: e.target.value })} className="h-9" />

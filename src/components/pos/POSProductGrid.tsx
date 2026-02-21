@@ -2,35 +2,41 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { mockProducts, mockCategories, type Product } from "@/data/mockProducts";
+import { type ProductRow } from "@/hooks/useProducts";
 import { Package } from "lucide-react";
 
+interface CategoryItem {
+  id: string;
+  name: string;
+}
+
 interface POSProductGridProps {
+  products: ProductRow[];
+  categories: CategoryItem[];
   activeCategory: string;
   onCategoryChange: (cat: string) => void;
   searchQuery: string;
   viewMode: "grid" | "list";
-  onAddToCart: (product: Product) => void;
+  onAddToCart: (product: ProductRow) => void;
 }
 
 function formatKz(value: number) {
   return new Intl.NumberFormat("pt-AO").format(value) + " Kz";
 }
 
-export function POSProductGrid({ activeCategory, onCategoryChange, searchQuery, viewMode, onAddToCart }: POSProductGridProps) {
-  const filteredProducts = mockProducts.filter((p) => {
-    const matchesCategory = activeCategory === "all" || p.categoryId === activeCategory;
+export function POSProductGrid({ products, categories, activeCategory, onCategoryChange, searchQuery, viewMode, onAddToCart }: POSProductGridProps) {
+  const filteredProducts = products.filter((p) => {
+    const matchesCategory = activeCategory === "all" || p.category_id === activeCategory;
     const matchesSearch =
       !searchQuery ||
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.barcode.includes(searchQuery) ||
+      (p.barcode || "").includes(searchQuery) ||
       p.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
+    return matchesCategory && matchesSearch && p.status === "active";
   });
 
   return (
     <div className="flex flex-col h-full">
-      {/* Category tabs */}
       <div className="flex gap-1.5 px-4 py-2 border-b overflow-x-auto">
         <button
           onClick={() => onCategoryChange("all")}
@@ -40,7 +46,7 @@ export function POSProductGrid({ activeCategory, onCategoryChange, searchQuery, 
         >
           Todos
         </button>
-        {mockCategories.map((cat) => (
+        {categories.map((cat) => (
           <button
             key={cat.id}
             onClick={() => onCategoryChange(cat.id)}
@@ -53,12 +59,12 @@ export function POSProductGrid({ activeCategory, onCategoryChange, searchQuery, 
         ))}
       </div>
 
-      {/* Products */}
       <ScrollArea className="flex-1">
         {viewMode === "grid" ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 p-4">
             {filteredProducts.map((product) => {
               const outOfStock = product.stock <= 0;
+              const lowStock = product.stock <= product.min_stock && product.stock > 0;
               return (
                 <Card
                   key={product.id}
@@ -73,8 +79,8 @@ export function POSProductGrid({ activeCategory, onCategoryChange, searchQuery, 
                   <p className="text-sm font-medium truncate">{product.name}</p>
                   <p className="text-xs text-muted-foreground">{product.sku}</p>
                   <div className="flex items-center justify-between mt-2">
-                    <span className="font-semibold text-sm text-primary">{formatKz(product.sellPrice)}</span>
-                    <Badge variant={outOfStock ? "destructive" : product.lowStock ? "outline" : "secondary"} className="text-[10px] px-1.5">
+                    <span className="font-semibold text-sm text-primary">{formatKz(product.sell_price)}</span>
+                    <Badge variant={outOfStock ? "destructive" : lowStock ? "outline" : "secondary"} className="text-[10px] px-1.5">
                       {outOfStock ? "Sem stock" : product.stock}
                     </Badge>
                   </div>
@@ -104,7 +110,7 @@ export function POSProductGrid({ activeCategory, onCategoryChange, searchQuery, 
                     >
                       <TableCell className="font-medium">{product.name}</TableCell>
                       <TableCell className="text-muted-foreground">{product.sku}</TableCell>
-                      <TableCell className="text-right font-medium">{formatKz(product.sellPrice)}</TableCell>
+                      <TableCell className="text-right font-medium">{formatKz(product.sell_price)}</TableCell>
                       <TableCell className="text-right">
                         <Badge variant={outOfStock ? "destructive" : "secondary"} className="text-xs">
                           {outOfStock ? "Sem stock" : product.stock}
