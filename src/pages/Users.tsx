@@ -142,7 +142,7 @@ export default function Users() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("*")
+        .select("id, user_id, full_name, display_name, avatar_url, phone, branch_id, company_id, is_active, created_at, updated_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as Profile[];
