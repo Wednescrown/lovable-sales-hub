@@ -22,8 +22,7 @@ interface SystemField {
 }
 
 const SYSTEM_FIELDS: SystemField[] = [
-  { key: "barcode", label: "Código de Barras", required: false, description: "Para identificar o produto" },
-  { key: "sku", label: "SKU", required: false, description: "Alternativa ao código de barras" },
+  { key: "barcode", label: "Código de Barras", required: true, description: "Para identificar o produto" },
   { key: "quantity", label: "Quantidade", required: true, description: "Nova quantidade em stock" },
 ];
 
@@ -78,7 +77,6 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
       const autoMap: Record<string, string> = {};
       const patterns: Record<string, RegExp> = {
         barcode: /^(barcode|codigo.*barra|cod.*bar|ean|gtin|c[oó]d)/i,
-        sku: /^(sku|referencia|ref|id)/i,
         quantity: /^(qtd|quant|stock|estoque|atual|disponivel|amount|qty)/i,
       };
       headers.forEach((h) => {
@@ -96,7 +94,7 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
     e.target.value = "";
   };
 
-  const hasIdentifier = !!(mapping.barcode || mapping.sku);
+  const hasIdentifier = !!mapping.barcode;
   const hasQuantity = !!mapping.quantity;
   const canProceed = hasIdentifier && hasQuantity;
 
@@ -111,18 +109,14 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
 
   const findProduct = (row: string[]): ProductRow | undefined => {
     const barcode = getMappedValue(row, "barcode");
-    const sku = getMappedValue(row, "sku");
-    return products.find((p) => {
-      if (barcode && p.barcode && p.barcode.toLowerCase() === barcode.toLowerCase()) return true;
-      if (sku && p.sku.toLowerCase() === sku.toLowerCase()) return true;
-      return false;
-    });
+    if (!barcode) return undefined;
+    return products.find((p) => p.barcode && p.barcode.toLowerCase() === barcode.toLowerCase());
   };
 
   const previewData = fileRows.slice(0, 30).map((row) => {
     const product = findProduct(row);
     const qty = getMappedValue(row, "quantity");
-    const identifier = getMappedValue(row, "barcode") || getMappedValue(row, "sku") || "—";
+    const identifier = getMappedValue(row, "barcode") || "—";
     return {
       identifier,
       product,
@@ -304,7 +298,7 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
               {!hasIdentifier && (
                 <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 rounded-md p-2">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  Deve mapear pelo menos o Código de Barras ou o SKU para identificar os produtos.
+                  Deve mapear o Código de Barras para identificar os produtos.
                 </div>
               )}
               {!hasQuantity && (
