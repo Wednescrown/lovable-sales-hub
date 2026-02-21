@@ -1,86 +1,120 @@
 
-
-# Pesquisa inteligente de produtos + Quantidade por Caixa + Pop-ups em tela cheia
+# Migrar para Base de Dados + Melhorias em Gestao de Produtos e Estoque
 
 ## Resumo
 
-Substituir o botao "Adicionar" manual por um campo de pesquisa inteligente com suporte a scanner de codigo de barras nos dialogos de Lista de Compras e Recebimento (GRN). Adicionar a coluna "Qtd Caixas" com calculo automatico de unidades totais. Maximizar o tamanho dos pop-ups com scroll interno.
+Substituir todos os dados mock (`mockProducts`, `mockCategories`, `mockInventory`) por dados reais do Supabase em todas as paginas. Remover o campo "Estoque" do formulario de produtos, adicionar confirmacao ao eliminar produtos, e criar a pagina de Estoque Disponivel.
 
-## O que muda para o utilizador
+## Alteracoes
 
-1. **Campo de pesquisa inteligente** no topo da tabela de itens — ao digitar, aparece uma lista de sugestoes filtradas por nome, SKU ou codigo de barras (usando os dados de `mockProducts`)
-2. **Scanner de codigo de barras** — ao usar o leitor, o produto e adicionado automaticamente a lista e o cursor salta para o campo de quantidade
-3. **Nova coluna "Qtd Caixas"** — o utilizador indica quantas caixas recebeu; o sistema multiplica pelo `packSize` do produto para calcular o total de unidades
-4. **Colunas da tabela de itens**: Produto | SKU | Qtd Caixas | Un/Caixa (packSize, so leitura) | Total Unidades (calculado) | Custo Unit. | Total
-5. **Pop-ups em tela cheia** — os dialogos ocupam ate 95% da largura e altura do ecra, com scroll vertical e horizontal interno
+### 1. Tipo de Produto unificado
 
-## Detalhes tecnicos
+Criar um tipo `Product` compativel com a base de dados (baseado em `ProductRow`) e eliminar o tipo `Product` do `mockProducts.ts`. O novo tipo sera exportado de `useProducts.ts` e reutilizado em todo o sistema.
 
-### 1. Componente reutilizavel: `ProductSearchInput`
+Campos mapeados:
+- `id`, `name`, `sku`, `barcode`, `category_id`, `subcategory_id`, `cost_price`, `sell_price`, `stock`, `min_stock`, `pack_size`, `unit`, `status`
+- `category_name`, `subcategory_name` (joins)
 
-Criar `src/components/compras/ProductSearchInput.tsx`:
-- Um `Input` com icone de pesquisa
-- Filtra `mockProducts` por `name`, `sku` e `barcode` (case-insensitive)
-- Mostra dropdown (Popover ou lista absoluta) com resultados
-- Ao seleccionar, chama `onSelect(product: Product)`
-- Listener de buffer de codigo de barras (mesmo padrao do POS): acumula teclas rapidas (<100ms entre elas), ao detectar Enter procura por `barcode`, adiciona automaticamente sem clique
+### 2. POS — Usar produtos da BD
 
-### 2. Modelo de item actualizado
+**`POSProductGrid.tsx`**:
+- Receber `products` e `categories` como props em vez de importar mocks
+- Adaptar campos: `sellPrice` -> `sell_price`, `categoryId` -> `category_id`, etc.
 
-Nas interfaces `POItem` e `NewGRNItem`, adicionar:
-- `box_quantity: number` (caixas)
-- `pack_size: number` (unidades por caixa, vindo do produto)
-- `total_units: number` (= box_quantity * pack_size, calculado)
+**`POS.tsx`**:
+- Importar `useProducts` e `useCategories` para obter dados reais
+- Passar dados como props ao `POSProductGrid`
+- Actualizar barcode scan para pesquisar nos produtos da BD
+- Adaptar `POSCart` e `POSPaymentDialog` para o novo tipo
 
-O campo `quantity_ordered` (PO) ou `quantity_received` (GRN) passa a ser preenchido automaticamente como `box_quantity * pack_size`.
+**`POSCart.tsx`**:
+- Actualizar referencia ao tipo `Product` para usar `ProductRow`
+- Adaptar campos (`sellPrice` -> `sell_price`)
 
-### 3. Alteracoes em `PurchaseOrders.tsx`
+### 3. PurchaseOrders e GoodsReceived — Usar produtos da BD
 
-- Remover botao "Adicionar" manual
-- Adicionar `ProductSearchInput` acima da tabela de itens
-- Ao seleccionar produto: adicionar linha com `product_name`, `sku`, `pack_size` pre-preenchidos, `box_quantity = 1`, cursor no campo quantidade
-- Colunas: Produto | SKU | Qtd Caixas | Un/Caixa | Total Un. | Custo Unit. | Total | (remover)
-- Logica de calculo: `total_units = box_quantity * pack_size`; `total_cost = total_units * unit_cost`
-- `DialogContent` com classe `max-w-[95vw] max-h-[95vh] h-[95vh]` e conteudo em `ScrollArea` interno
-- Listener global de barcode dentro do dialogo (activo apenas quando `dialogOpen === true`)
+**`ProductSearchInput.tsx`** (componente partilhado):
+- Receber `products: ProductRow[]` como prop em vez de importar `mockProducts`
+- Adaptar campos de pesquisa e barcode scan
+- Adaptar `onSelect` para devolver `ProductRow`
 
-### 4. Alteracoes em `GoodsReceived.tsx`
+**`PurchaseOrders.tsx`**:
+- Importar `useProducts` para buscar produtos reais
+- Passar produtos ao `ProductSearchInput`
+- Adaptar `handleProductSelect` para usar `ProductRow` (`cost_price`, `pack_size`, etc.)
 
-- Mesmas alteracoes no dialogo de "Novo Recebimento":
-  - `ProductSearchInput` em vez de botao "Adicionar"
-  - Colunas com Qtd Caixas + Un/Caixa + Total Unidades
-  - Pop-up maximizado com scroll
-  - Barcode scanner listener
-- Dialogo de "Detalhes" e "Devolucao" tambem maximizados com scroll
+**`GoodsReceived.tsx`**:
+- Mesmas alteracoes que `PurchaseOrders`
 
-### 5. Tamanho dos pop-ups
+### 4. StockAdjustment e StockCount — Usar produtos da BD
 
-Nos `DialogContent` de ambas as paginas:
-- Classe: `max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] flex flex-col`
-- Corpo do formulario dentro de `ScrollArea` com `flex-1 overflow-auto`
-- Footer fixo no fundo do dialogo
+**`StockAdjustment.tsx`**:
+- Substituir `mockProducts` por `useProducts()`
+- Substituir `mockStores` por dados de `branches` (query Supabase)
+- Adaptar campos
 
-### 6. Ficheiros a criar/editar
+**`StockCount.tsx`**:
+- Substituir `mockProducts` por `useProducts()`
+- Substituir `mockStores` por `branches`
+- Adaptar campos
+
+### 5. Labels — Usar produtos da BD
+
+**`Labels.tsx`**:
+- Substituir `mockProducts` por `useProducts()`
+- Adaptar campos
+
+### 6. Eliminar ficheiros mock
+
+- Eliminar `src/data/mockProducts.ts`
+- Actualizar `src/data/mockInventory.ts` para remover dependencia de mockProducts (manter tipos e constantes uteis como `adjustmentReasonLabels`, mover `Store` para usar `branches`)
+
+### 7. Gestao de Produtos — Melhorias
+
+**Remover campo "Estoque Inicial"** do formulario de criacao/edicao em `Products.tsx`:
+- Remover o campo `stock` do formulario (o stock sera gerido apenas por recebimentos e ajustes)
+- Manter `min_stock` (alerta de estoque baixo)
+
+**Confirmacao ao eliminar produto**:
+- Adicionar `AlertDialog` de confirmacao antes de eliminar um produto
+- Mostrar nome do produto na mensagem de confirmacao
+
+### 8. Pagina "Estoque Disponivel"
+
+Criar `src/pages/StockAvailable.tsx`:
+- Listar todos os produtos com stock actual, stock minimo, estado (normal/baixo/sem stock)
+- Filtros: categoria, subcategoria, estado de stock
+- KPI cards: total produtos, produtos com stock baixo, produtos sem stock, valor total em stock
+- Coluna de "Cobertura" (dias estimados baseado em vendas — placeholder por agora)
+- Rota: `/estoque` em `App.tsx`
+
+### 9. Ficheiros a criar/editar
 
 | Ficheiro | Accao |
 |---|---|
-| `src/components/compras/ProductSearchInput.tsx` | Criar — campo de pesquisa + barcode scanner |
-| `src/pages/PurchaseOrders.tsx` | Editar — novo campo pesquisa, colunas caixa, pop-up maximizado |
-| `src/pages/GoodsReceived.tsx` | Editar — novo campo pesquisa, colunas caixa, pop-ups maximizados |
+| `src/hooks/useProducts.ts` | Editar — exportar tipo `ProductRow` como tipo principal |
+| `src/components/pos/POSProductGrid.tsx` | Editar — receber dados por props |
+| `src/components/pos/POSCart.tsx` | Editar — adaptar tipo |
+| `src/pages/POS.tsx` | Editar — usar `useProducts` e `useCategories` |
+| `src/components/compras/ProductSearchInput.tsx` | Editar — receber produtos por props |
+| `src/pages/PurchaseOrders.tsx` | Editar — usar produtos da BD |
+| `src/pages/GoodsReceived.tsx` | Editar — usar produtos da BD |
+| `src/pages/StockAdjustment.tsx` | Editar — usar produtos da BD |
+| `src/pages/StockCount.tsx` | Editar — usar produtos da BD |
+| `src/pages/Labels.tsx` | Editar — usar produtos da BD |
+| `src/pages/Products.tsx` | Editar — remover stock do form, adicionar AlertDialog de eliminacao |
+| `src/pages/StockAvailable.tsx` | Criar — pagina de estoque disponivel |
+| `src/App.tsx` | Editar — adicionar rota `/estoque` |
+| `src/data/mockProducts.ts` | Eliminar |
+| `src/data/mockInventory.ts` | Editar — remover dependencia de mockProducts |
 
-### 7. Fluxo do scanner
+### 10. Sequencia de implementacao
 
-```text
-Utilizador scaneia codigo de barras
-       |
-       v
-Buffer acumula digitos (< 100ms entre teclas)
-       |
-       v
-Enter detectado → procura em mockProducts por barcode
-       |
-       ├── Encontrou → adiciona item a lista, foco no campo "Qtd Caixas"
-       |
-       └── Nao encontrou → toast de erro "Produto nao encontrado"
-```
-
+1. Actualizar `useProducts.ts` com tipo unificado
+2. Actualizar `ProductSearchInput.tsx` para receber props
+3. Actualizar `POSProductGrid.tsx`, `POSCart.tsx`, `POS.tsx`
+4. Actualizar `PurchaseOrders.tsx` e `GoodsReceived.tsx`
+5. Actualizar `StockAdjustment.tsx`, `StockCount.tsx`, `Labels.tsx`
+6. Melhorar `Products.tsx` (remover stock, AlertDialog)
+7. Criar `StockAvailable.tsx` e registar rota
+8. Eliminar `mockProducts.ts` e limpar `mockInventory.ts`
