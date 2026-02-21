@@ -86,6 +86,9 @@ export default function PlatformLogin() {
         <p className="text-center text-xs text-muted-foreground mt-6">
           Acesso apenas para administradores autorizados da plataforma AngoPos
         </p>
+        <p className="text-center text-[10px] text-muted-foreground mt-4">
+          © {new Date().getFullYear()} Wednescrown Enterprise. Todos os direitos reservados.
+        </p>
       </div>
     </div>
   );
