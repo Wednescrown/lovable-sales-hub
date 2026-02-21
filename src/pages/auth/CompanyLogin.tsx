@@ -298,6 +298,9 @@ export default function CompanyLogin() {
             ? "A sessão da empresa fica guardada neste dispositivo"
             : "Ao registar, será criado o primeiro utilizador como administrador"}
         </p>
+        <p className="text-center text-[10px] text-muted-foreground mt-4">
+          © {new Date().getFullYear()} Wednescrown Enterprise. Todos os direitos reservados.
+        </p>
       </div>
     </div>
   );
