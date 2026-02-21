@@ -1,123 +1,86 @@
 
 
-# Plano: Redefinicao de PIN + Modulo de Compras e Devolucoes
+# Pesquisa inteligente de produtos + Quantidade por Caixa + Pop-ups em tela cheia
 
-## Parte 1: Redefinicao de PIN pelo Administrador
+## Resumo
 
-### O que muda
-Na pagina de Utilizadores (`Users.tsx`), o dialogo de edicao passa a incluir um botao "Redefinir PIN" que permite ao administrador limpar o PIN actual do utilizador. Na proxima vez que o utilizador fizer login, sera obrigado a definir um novo PIN (fluxo ja existente no `UserSelect.tsx`).
+Substituir o botao "Adicionar" manual por um campo de pesquisa inteligente com suporte a scanner de codigo de barras nos dialogos de Lista de Compras e Recebimento (GRN). Adicionar a coluna "Qtd Caixas" com calculo automatico de unidades totais. Maximizar o tamanho dos pop-ups com scroll interno.
 
-### Alteracoes tecnicas
-- **Migracao SQL**: Criar funcao `reset_user_pin(_profile_id uuid)` (SECURITY DEFINER) que faz `UPDATE profiles SET pin = NULL WHERE id = _profile_id`
-- **`src/pages/Users.tsx`**: Adicionar botao "Redefinir PIN" no dialogo de edicao com confirmacao AlertDialog. Chama `supabase.rpc("reset_user_pin", { _profile_id })`.
+## O que muda para o utilizador
 
----
+1. **Campo de pesquisa inteligente** no topo da tabela de itens — ao digitar, aparece uma lista de sugestoes filtradas por nome, SKU ou codigo de barras (usando os dados de `mockProducts`)
+2. **Scanner de codigo de barras** — ao usar o leitor, o produto e adicionado automaticamente a lista e o cursor salta para o campo de quantidade
+3. **Nova coluna "Qtd Caixas"** — o utilizador indica quantas caixas recebeu; o sistema multiplica pelo `packSize` do produto para calcular o total de unidades
+4. **Colunas da tabela de itens**: Produto | SKU | Qtd Caixas | Un/Caixa (packSize, so leitura) | Total Unidades (calculado) | Custo Unit. | Total
+5. **Pop-ups em tela cheia** — os dialogos ocupam ate 95% da largura e altura do ecra, com scroll vertical e horizontal interno
 
-## Parte 2: Modulo de Compras e Devolucoes
+## Detalhes tecnicos
 
-### Novas tabelas na base de dados
+### 1. Componente reutilizavel: `ProductSearchInput`
 
-**`suppliers`** — Fornecedores
-- `id`, `company_id`, `name`, `contact_person`, `email`, `phone`, `address`, `tax_id` (NIF), `is_active`, `created_at`, `updated_at`
-- RLS: isolamento por `company_id`
+Criar `src/components/compras/ProductSearchInput.tsx`:
+- Um `Input` com icone de pesquisa
+- Filtra `mockProducts` por `name`, `sku` e `barcode` (case-insensitive)
+- Mostra dropdown (Popover ou lista absoluta) com resultados
+- Ao seleccionar, chama `onSelect(product: Product)`
+- Listener de buffer de codigo de barras (mesmo padrao do POS): acumula teclas rapidas (<100ms entre elas), ao detectar Enter procura por `barcode`, adiciona automaticamente sem clique
 
-**`purchase_orders`** — Lista de Compras / Notas de Encomenda
-- `id`, `company_id`, `branch_id`, `supplier_id`, `order_number` (sequencial por empresa), `status` (draft/sent/partial/received/cancelled), `notes`, `expected_date`, `total_amount`, `created_by`, `created_at`, `updated_at`
-- RLS: isolamento por `company_id`
+### 2. Modelo de item actualizado
 
-**`purchase_order_items`** — Itens da lista de compra
-- `id`, `purchase_order_id`, `product_name`, `sku`, `quantity_ordered`, `quantity_received`, `unit_cost`, `total_cost`
-- RLS: via join com `purchase_orders`
+Nas interfaces `POItem` e `NewGRNItem`, adicionar:
+- `box_quantity: number` (caixas)
+- `pack_size: number` (unidades por caixa, vindo do produto)
+- `total_units: number` (= box_quantity * pack_size, calculado)
 
-**`goods_received_notes`** — Recebimentos (GRN)
-- `id`, `company_id`, `branch_id`, `supplier_id`, `purchase_order_id` (nullable — permite recebimento directo), `grn_number` (sequencial por empresa), `status` (received/returned/corrected), `notes`, `total_amount`, `received_by`, `received_at`, `created_at`, `updated_at`
-- RLS: isolamento por `company_id`
+O campo `quantity_ordered` (PO) ou `quantity_received` (GRN) passa a ser preenchido automaticamente como `box_quantity * pack_size`.
 
-**`grn_items`** — Itens do recebimento
-- `id`, `grn_id`, `product_name`, `sku`, `quantity_received`, `unit_cost`, `total_cost`
-- RLS: via join com `goods_received_notes`
+### 3. Alteracoes em `PurchaseOrders.tsx`
 
-**`grn_returns`** — Devolucoes de recebimentos
-- `id`, `company_id`, `grn_id`, `return_number` (sequencial), `reason`, `total_amount`, `returned_by`, `returned_at`, `created_at`
-- Regra de negocio: so permitir devolucao ate 2 dias apos recebimento, excepto admin
-- RLS: isolamento por `company_id`
+- Remover botao "Adicionar" manual
+- Adicionar `ProductSearchInput` acima da tabela de itens
+- Ao seleccionar produto: adicionar linha com `product_name`, `sku`, `pack_size` pre-preenchidos, `box_quantity = 1`, cursor no campo quantidade
+- Colunas: Produto | SKU | Qtd Caixas | Un/Caixa | Total Un. | Custo Unit. | Total | (remover)
+- Logica de calculo: `total_units = box_quantity * pack_size`; `total_cost = total_units * unit_cost`
+- `DialogContent` com classe `max-w-[95vw] max-h-[95vh] h-[95vh]` e conteudo em `ScrollArea` interno
+- Listener global de barcode dentro do dialogo (activo apenas quando `dialogOpen === true`)
 
-**`grn_return_items`** — Itens devolvidos
-- `id`, `grn_return_id`, `grn_item_id`, `quantity_returned`, `unit_cost`, `total_cost`
+### 4. Alteracoes em `GoodsReceived.tsx`
 
-### Funcoes SQL auxiliares
-- `generate_next_order_number(_company_id uuid)` — gera numero sequencial para purchase orders
-- `generate_next_grn_number(_company_id uuid)` — gera numero sequencial para GRNs
-- `generate_next_return_number(_company_id uuid)` — gera numero sequencial para devolucoes
-- `can_return_grn(_grn_id uuid, _user_id uuid)` — verifica se a devolucao e permitida (2 dias ou admin)
+- Mesmas alteracoes no dialogo de "Novo Recebimento":
+  - `ProductSearchInput` em vez de botao "Adicionar"
+  - Colunas com Qtd Caixas + Un/Caixa + Total Unidades
+  - Pop-up maximizado com scroll
+  - Barcode scanner listener
+- Dialogo de "Detalhes" e "Devolucao" tambem maximizados com scroll
 
-### Novas paginas e componentes
+### 5. Tamanho dos pop-ups
 
-**`src/pages/Suppliers.tsx`** — CRUD completo de fornecedores
-- Listagem com pesquisa e filtros
-- Dialogo para criar/editar fornecedor
-- Desactivar fornecedor (soft delete)
-- KPI cards: total fornecedores, activos, inactivos
+Nos `DialogContent` de ambas as paginas:
+- Classe: `max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] flex flex-col`
+- Corpo do formulario dentro de `ScrollArea` com `flex-1 overflow-auto`
+- Footer fixo no fundo do dialogo
 
-**`src/pages/PurchaseOrders.tsx`** — Lista de Compras
-- Listagem de ordens de compra com status (Rascunho, Enviada, Parcial, Recebida, Cancelada)
-- Criar nova ordem: seleccionar fornecedor, adicionar itens (produto, quantidade, custo unitario)
-- Editar/cancelar ordens em rascunho
-- Botao "Receber" que abre o fluxo de GRN pre-preenchido
+### 6. Ficheiros a criar/editar
 
-**`src/pages/GoodsReceived.tsx`** — Recebimento (GRN)
-- Duas formas de criar recebimento:
-  1. A partir de uma ordem de compra (pre-preenche itens)
-  2. Recebimento directo (sem ordem de compra)
-- Formulario: seleccionar fornecedor, adicionar itens, quantidades, custos
-- Numeracao automatica (GRN-001, GRN-002...)
-- Historico de recebimentos com tabela numerada
-- Painel de detalhes por recebimento
-- Botao "Devolver" por documento recebido
-  - Bloqueado apos 2 dias (excepto admin)
-  - Formulario de devolucao: seleccionar itens e quantidades a devolver, motivo
-- Botao "Corrigir" — disponivel ate 2 dias apos lancamento (ou admin)
+| Ficheiro | Accao |
+|---|---|
+| `src/components/compras/ProductSearchInput.tsx` | Criar — campo de pesquisa + barcode scanner |
+| `src/pages/PurchaseOrders.tsx` | Editar — novo campo pesquisa, colunas caixa, pop-up maximizado |
+| `src/pages/GoodsReceived.tsx` | Editar — novo campo pesquisa, colunas caixa, pop-ups maximizados |
 
-### Componentes auxiliares
-- `src/components/compras/SupplierFormDialog.tsx` — formulario de fornecedor
-- `src/components/compras/PurchaseOrderFormDialog.tsx` — formulario de ordem de compra
-- `src/components/compras/PurchaseOrderItems.tsx` — tabela de itens da ordem
-- `src/components/compras/GRNFormDialog.tsx` — formulario de recebimento
-- `src/components/compras/GRNReturnDialog.tsx` — formulario de devolucao
-- `src/components/compras/GRNDetailPanel.tsx` — painel de detalhes do recebimento
-
-### Rotas novas em `App.tsx`
-- `/fornecedores` → `Suppliers`
-- `/lista-compras` → `PurchaseOrders`
-- `/recebimento` → `GoodsReceived`
-
-### Fluxo do utilizador
+### 7. Fluxo do scanner
 
 ```text
-Fornecedores (CRUD)
+Utilizador scaneia codigo de barras
        |
        v
-Lista de Compras ──────────────────┐
-  (criar ordem)                     |
-       |                            |
-       v                            v
-  Recebimento (GRN)          Recebimento Directo
-  (a partir da ordem)        (sem ordem de compra)
+Buffer acumula digitos (< 100ms entre teclas)
        |
        v
-  Historico de Recebimentos
-  (numerado: GRN-001, GRN-002...)
+Enter detectado → procura em mockProducts por barcode
        |
-       v
-  Devolucao / Correccao
-  (ate 2 dias ou admin)
+       ├── Encontrou → adiciona item a lista, foco no campo "Qtd Caixas"
+       |
+       └── Nao encontrou → toast de erro "Produto nao encontrado"
 ```
-
-### Sequencia de implementacao
-1. Migracao SQL: funcao `reset_user_pin` + botao no Users.tsx
-2. Migracao SQL: criar todas as tabelas e funcoes de compras
-3. Pagina de Fornecedores (CRUD completo)
-4. Pagina de Lista de Compras
-5. Pagina de Recebimento (GRN) com historico e devolucoes
-6. Registar rotas em App.tsx
 
