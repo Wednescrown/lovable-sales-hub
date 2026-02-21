@@ -74,21 +74,45 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create user via admin API
-    const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
-      email,
-      email_confirm: true,
-      user_metadata: { full_name, display_name: display_name || email.split("@")[0] },
-    });
+    // Check if user already exists
+    const { data: existingUsers } = await adminClient.auth.admin.listUsers();
+    const existingUser = existingUsers?.users?.find((u) => u.email === email);
 
-    if (createError) {
-      return new Response(JSON.stringify({ error: createError.message }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    let userId: string;
+
+    if (existingUser) {
+      // Check if already in a company
+      const { data: existingProfile } = await adminClient
+        .from("profiles")
+        .select("company_id")
+        .eq("user_id", existingUser.id)
+        .maybeSingle();
+
+      if (existingProfile?.company_id) {
+        return new Response(
+          JSON.stringify({ error: "Este utilizador já pertence a uma empresa" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      userId = existingUser.id;
+    } else {
+      // Create new user
+      const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
+        email,
+        email_confirm: true,
+        user_metadata: { full_name, display_name: display_name || email.split("@")[0] },
       });
-    }
 
-    const userId = newUser.user.id;
+      if (createError) {
+        return new Response(JSON.stringify({ error: createError.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      userId = newUser.user.id;
+    }
 
     // Update profile with additional info and company_id
     await adminClient
