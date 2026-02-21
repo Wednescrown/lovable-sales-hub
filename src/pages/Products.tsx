@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import {
   Package, Search, Plus, Filter, Download, Upload, AlertTriangle, Edit, Trash2, Barcode, Eye, ShoppingCart,
@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useProducts, useProductMutations, type ProductRow } from "@/hooks/useProducts";
 import { useCategories, useAllSubcategories } from "@/hooks/useCategories";
+import { ProductImportDialog } from "@/components/products/ProductImportDialog";
 
 function formatKz(value: number) {
   return value.toLocaleString("pt-AO") + " Kz";
@@ -35,9 +36,7 @@ const Products = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<ProductRow | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [importData, setImportData] = useState<string[][]>([]);
   const [shoppingList, setShoppingList] = useState<string[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -131,19 +130,6 @@ const Products = () => {
     setDeleteConfirm(null);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const text = evt.target?.result as string;
-      const rows = text.split("\n").filter(Boolean).map((row) => row.split(/[,;\t]/));
-      setImportData(rows);
-      setImportOpen(true);
-    };
-    reader.readAsText(file);
-    e.target.value = "";
-  };
 
   const addToShoppingList = (productId: string, productName: string) => {
     if (shoppingList.includes(productId)) {
@@ -180,8 +166,7 @@ const Products = () => {
             {shoppingList.length > 0 && (
               <Badge variant="secondary" className="gap-1"><ShoppingCart className="w-3 h-3" />{shoppingList.length}</Badge>
             )}
-            <input type="file" ref={fileInputRef} accept=".csv,.xls,.xlsx" className="hidden" onChange={handleFileUpload} />
-            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+            <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
               <Upload className="w-4 h-4 mr-1" />Importar
             </Button>
             <Button variant="outline" size="sm"><Download className="w-4 h-4 mr-1" />Exportar</Button>
@@ -484,45 +469,7 @@ const Products = () => {
         </AlertDialog>
 
         {/* Import Dialog */}
-        <Dialog open={importOpen} onOpenChange={setImportOpen}>
-          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2"><Upload className="w-5 h-5 text-primary" />Importar Produtos</DialogTitle>
-              <DialogDescription>Preview dos dados do ficheiro importado.</DialogDescription>
-            </DialogHeader>
-            {importData.length > 0 && (
-              <div className="border rounded-md overflow-auto max-h-[400px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {importData[0]?.map((header, i) => (
-                        <TableHead key={i} className="text-xs whitespace-nowrap">{header}</TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {importData.slice(1, 50).map((row, ri) => (
-                      <TableRow key={ri}>
-                        {row.map((cell, ci) => (<TableCell key={ci} className="text-xs whitespace-nowrap">{cell}</TableCell>))}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {importData.length > 1 ? `${importData.length - 1} registos encontrados.` : "Nenhum dado encontrado."}
-            </p>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => { setImportOpen(false); setImportData([]); }}>Cancelar</Button>
-              <Button onClick={() => {
-                setImportOpen(false);
-                setImportData([]);
-                toast({ title: "Importação simulada", description: `${importData.length - 1} produtos processados com sucesso.` });
-              }}>Confirmar Importação</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <ProductImportDialog open={importOpen} onOpenChange={setImportOpen} />
       </div>
     </AppLayout>
   );
