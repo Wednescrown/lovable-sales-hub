@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import CompanyLogin from "./pages/auth/CompanyLogin";
+import ResetPassword from "./pages/auth/ResetPassword";
 import UserSelect from "./pages/auth/UserSelect";
 import Index from "./pages/Index";
 import Products from "./pages/Products";
@@ -33,6 +34,7 @@ const App = () => (
             {/* Public auth routes */}
             <Route path="/auth/company" element={<CompanyLogin />} />
             <Route path="/auth/user-select" element={<UserSelect />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* Protected routes */}
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />

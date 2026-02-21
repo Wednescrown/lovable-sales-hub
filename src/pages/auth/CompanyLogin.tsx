@@ -20,6 +20,10 @@ export default function CompanyLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState("");
   const navigate = useNavigate();
 
   if (isCompanyAuthenticated && isUserSelected) return <Navigate to="/" replace />;
@@ -35,6 +39,7 @@ export default function CompanyLogin() {
     setError("");
     setSuccess("");
   };
+
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +57,28 @@ export default function CompanyLogin() {
       setError("Erro inesperado. Tente novamente.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setForgotSuccess("");
+    setForgotLoading(true);
+
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (resetError) {
+        setError(resetError.message);
+        return;
+      }
+      setForgotSuccess("Email de recuperação enviado! Verifique a sua caixa de entrada.");
+    } catch {
+      setError("Erro inesperado. Tente novamente.");
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -145,16 +172,18 @@ export default function CompanyLogin() {
         <Card className="border-border shadow-xl">
           <CardHeader className="text-center pb-4">
             <CardTitle className="text-lg">
-              {mode === "login" ? "Abrir Empresa" : "Registar Nova Empresa"}
+              {forgotMode ? "Recuperar Senha" : mode === "login" ? "Abrir Empresa" : "Registar Nova Empresa"}
             </CardTitle>
             <CardDescription>
-              {mode === "login"
+              {forgotMode
+                ? "Introduza o email para receber o link de recuperação"
+                : mode === "login"
                 ? "Introduza as credenciais da empresa para iniciar a sessão"
                 : "Preencha os dados para criar uma nova empresa"}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {mode === "login" ? (
+            {mode === "login" && !forgotMode ? (
               <form onSubmit={handleLogin} className="space-y-4">
                 {error && (
                   <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
@@ -180,8 +209,40 @@ export default function CompanyLogin() {
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? <><Loader2 className="w-4 h-4 animate-spin" />A entrar...</> : "Entrar"}
                 </Button>
+                <div className="text-center">
+                  <button type="button" onClick={() => { setForgotMode(true); setError(""); setForgotEmail(email); }} className="text-sm text-muted-foreground hover:text-primary hover:underline">
+                    Esqueceu a senha?
+                  </button>
+                </div>
               </form>
-            ) : (
+            ) : mode === "login" && forgotMode ? (
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                {error && (
+                  <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+                {forgotSuccess && (
+                  <div className="flex items-center gap-2 p-3 rounded-md bg-primary/10 text-primary text-sm">
+                    <Store className="w-4 h-4 shrink-0" />
+                    <span>{forgotSuccess}</span>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="forgotEmail">Email da Empresa</Label>
+                  <Input id="forgotEmail" type="email" placeholder="empresa@exemplo.co.ao" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} required autoComplete="email" />
+                </div>
+                <Button type="submit" className="w-full" disabled={forgotLoading}>
+                  {forgotLoading ? <><Loader2 className="w-4 h-4 animate-spin" />A enviar...</> : "Enviar Link de Recuperação"}
+                </Button>
+                <div className="text-center">
+                  <button type="button" onClick={() => { setForgotMode(false); setError(""); setForgotSuccess(""); }} className="text-sm text-muted-foreground hover:text-primary hover:underline">
+                    Voltar ao login
+                  </button>
+                </div>
+              </form>
+            ) : mode === "register" ? (
               <form onSubmit={handleRegister} className="space-y-4">
                 {error && (
                   <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
@@ -218,18 +279,19 @@ export default function CompanyLogin() {
                   {loading ? <><Loader2 className="w-4 h-4 animate-spin" />A registar...</> : <><Building2 className="w-4 h-4" />Registar Empresa</>}
                 </Button>
               </form>
-            )}
+            ) : null}
 
-            {/* Toggle mode */}
-            <div className="mt-4 text-center">
-              <button
-                type="button"
-                onClick={() => { setMode(mode === "login" ? "register" : "login"); resetForm(); }}
-                className="text-sm text-primary hover:underline"
-              >
-                {mode === "login" ? "Não tem empresa? Registar nova empresa" : "Já tem empresa? Fazer login"}
-              </button>
-            </div>
+            {!forgotMode && (
+              <div className="mt-4 text-center">
+                <button
+                  type="button"
+                  onClick={() => { setMode(mode === "login" ? "register" : "login"); resetForm(); setForgotMode(false); setForgotSuccess(""); }}
+                  className="text-sm text-primary hover:underline"
+                >
+                  {mode === "login" ? "Não tem empresa? Registar nova empresa" : "Já tem empresa? Fazer login"}
+                </button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
