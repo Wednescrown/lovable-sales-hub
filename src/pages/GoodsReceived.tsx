@@ -131,6 +131,16 @@ export default function GoodsReceived() {
         const rows = grnItems.map((i) => ({ grn_id: newGrn.id, product_name: i.product_name, sku: i.sku || null, quantity_received: i.total_units, unit_cost: i.unit_cost, total_cost: i.total_cost }));
         const { error: ie } = await (supabase as any).from("grn_items").insert(rows);
         if (ie) throw ie;
+
+        // Update stock for each received product
+        for (const item of grnItems) {
+          if (!item.sku) continue;
+          const matchedProduct = dbProducts.find((p) => p.sku === item.sku);
+          if (matchedProduct) {
+            const newStock = matchedProduct.stock + item.total_units;
+            await supabase.from("products").update({ stock: newStock }).eq("id", matchedProduct.id);
+          }
+        }
       }
       if (grnForm.purchase_order_id) {
         await (supabase as any).from("purchase_orders").update({ status: "received" }).eq("id", grnForm.purchase_order_id);
@@ -139,6 +149,7 @@ export default function GoodsReceived() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["goods_received_notes"] });
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
       toast.success("Recebimento lançado com sucesso");
       setGrnDialog(false); setGrnItems([]); setGrnForm({ supplier_id: "", notes: "", purchase_order_id: "" });
     },
