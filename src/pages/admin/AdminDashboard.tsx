@@ -275,7 +275,7 @@ export default function AdminDashboard() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    <p className="text-2xl font-bold">{(plan.price / 100).toLocaleString("pt-AO")} Kz<span className="text-sm font-normal text-muted-foreground">/mês</span></p>
+                    <p className="text-2xl font-bold">{plan.price.toLocaleString("pt-AO")} Kz<span className="text-sm font-normal text-muted-foreground">/mês</span></p>
                     <div className="text-xs text-muted-foreground space-y-1">
                       <p>Até {plan.max_users} utilizadores</p>
                       <p>Até {plan.max_branches} filiais</p>
@@ -393,7 +393,7 @@ export default function AdminDashboard() {
                   <SelectTrigger><SelectValue placeholder="Seleccionar plano" /></SelectTrigger>
                   <SelectContent>
                     {plans.filter((p) => p.is_active).map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.name} — {(p.price / 100).toLocaleString("pt-AO")} Kz/mês</SelectItem>
+                      <SelectItem key={p.id} value={p.id}>{p.name} — {p.price.toLocaleString("pt-AO")} Kz/mês</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
