@@ -2,42 +2,41 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search } from "lucide-react";
-import { mockProducts, Product } from "@/data/mockProducts";
+import { type ProductRow } from "@/hooks/useProducts";
 import { toast } from "sonner";
 
 interface ProductSearchInputProps {
-  onSelect: (product: Product) => void;
+  products: ProductRow[];
+  onSelect: (product: ProductRow) => void;
   dialogOpen: boolean;
 }
 
-export function ProductSearchInput({ onSelect, dialogOpen }: ProductSearchInputProps) {
+export function ProductSearchInput({ products, onSelect, dialogOpen }: ProductSearchInputProps) {
   const [query, setQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Barcode scanner buffer
   const barcodeBuffer = useRef("");
   const barcodeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const filtered = query.length >= 1
-    ? mockProducts.filter((p) => {
+    ? products.filter((p) => {
         const q = query.toLowerCase();
         return (
           p.name.toLowerCase().includes(q) ||
           p.sku.toLowerCase().includes(q) ||
-          p.barcode.includes(q)
+          (p.barcode || "").includes(q)
         );
       }).slice(0, 10)
     : [];
 
-  const handleSelect = useCallback((product: Product) => {
+  const handleSelect = useCallback((product: ProductRow) => {
     onSelect(product);
     setQuery("");
     setShowDropdown(false);
   }, [onSelect]);
 
-  // Close dropdown on click outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -48,15 +47,12 @@ export function ProductSearchInput({ onSelect, dialogOpen }: ProductSearchInputP
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Barcode scanner listener (global keydown when dialog is open)
   useEffect(() => {
     if (!dialogOpen) return;
 
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const tagName = target.tagName.toLowerCase();
-      // Allow barcode scanning even when focused on the search input
-      // but skip if user is in other inputs (quantity, cost, etc.)
       const isSearchInput = target === inputRef.current;
       if (!isSearchInput && (tagName === "input" || tagName === "textarea" || tagName === "select")) return;
 
@@ -64,7 +60,7 @@ export function ProductSearchInput({ onSelect, dialogOpen }: ProductSearchInputP
         e.preventDefault();
         const barcode = barcodeBuffer.current;
         barcodeBuffer.current = "";
-        const product = mockProducts.find((p) => p.barcode === barcode);
+        const product = products.find((p) => p.barcode === barcode);
         if (product) {
           handleSelect(product);
         } else {
@@ -73,7 +69,6 @@ export function ProductSearchInput({ onSelect, dialogOpen }: ProductSearchInputP
         return;
       }
 
-      // Only accumulate digits
       if (/^\d$/.test(e.key)) {
         if (barcodeTimeout.current) clearTimeout(barcodeTimeout.current);
         barcodeBuffer.current += e.key;
@@ -81,7 +76,6 @@ export function ProductSearchInput({ onSelect, dialogOpen }: ProductSearchInputP
           barcodeBuffer.current = "";
         }, 100);
       } else if (e.key !== "Enter") {
-        // Non-digit, non-enter: reset buffer
         barcodeBuffer.current = "";
         if (barcodeTimeout.current) clearTimeout(barcodeTimeout.current);
       }
@@ -89,7 +83,7 @@ export function ProductSearchInput({ onSelect, dialogOpen }: ProductSearchInputP
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [dialogOpen, handleSelect]);
+  }, [dialogOpen, handleSelect, products]);
 
   return (
     <div ref={containerRef} className="relative">
@@ -122,7 +116,7 @@ export function ProductSearchInput({ onSelect, dialogOpen }: ProductSearchInputP
                   <span className="text-muted-foreground ml-2 text-xs">{p.sku}</span>
                 </div>
                 <span className="text-xs text-muted-foreground whitespace-nowrap">
-                  {p.packSize} un/cx
+                  {p.pack_size} un/cx
                 </span>
               </button>
             ))}

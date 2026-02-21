@@ -4,28 +4,20 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Search, Plus, Edit, FileText, Trash2, PackageCheck,
-} from "lucide-react";
+import { Search, Plus, Edit, FileText, Trash2, PackageCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ProductSearchInput } from "@/components/compras/ProductSearchInput";
-import { Product } from "@/data/mockProducts";
+import { useProducts, type ProductRow } from "@/hooks/useProducts";
 
 interface Supplier { id: string; name: string; }
 interface PurchaseOrder {
@@ -37,7 +29,7 @@ interface POItem {
   id?: string; product_name: string; sku: string;
   box_quantity: number; pack_size: number; total_units: number;
   unit_cost: number; total_cost: number;
-  quantity_ordered: number; // = total_units, for DB compat
+  quantity_ordered: number;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -59,6 +51,7 @@ export default function PurchaseOrders() {
   const queryClient = useQueryClient();
   const { companyId, activeUser } = useAuth();
   const navigate = useNavigate();
+  const { data: dbProducts = [] } = useProducts();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selected, setSelected] = useState<PurchaseOrder | null>(null);
@@ -68,8 +61,7 @@ export default function PurchaseOrders() {
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ["purchase_orders"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("purchase_orders").select("*").order("created_at", { ascending: false });
+      const { data, error } = await (supabase as any).from("purchase_orders").select("*").order("created_at", { ascending: false });
       if (error) throw error;
       return data as PurchaseOrder[];
     },
@@ -78,8 +70,7 @@ export default function PurchaseOrders() {
   const { data: suppliers = [] } = useQuery({
     queryKey: ["suppliers_active"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("suppliers").select("id, name").eq("is_active", true).order("name");
+      const { data, error } = await (supabase as any).from("suppliers").select("id, name").eq("is_active", true).order("name");
       if (error) throw error;
       return data as Supplier[];
     },
@@ -153,7 +144,7 @@ export default function PurchaseOrders() {
     setDialogOpen(true);
   };
 
-  const handleProductSelect = (product: Product) => {
+  const handleProductSelect = (product: ProductRow) => {
     setItems((prev) => {
       const existing = prev.findIndex((i) => i.sku === product.sku);
       if (existing >= 0) {
@@ -166,10 +157,10 @@ export default function PurchaseOrders() {
       }
       const newItem: POItem = {
         product_name: product.name, sku: product.sku,
-        box_quantity: 1, pack_size: product.packSize,
-        total_units: product.packSize,
-        unit_cost: product.costPrice, total_cost: product.packSize * product.costPrice,
-        quantity_ordered: product.packSize,
+        box_quantity: 1, pack_size: product.pack_size,
+        total_units: product.pack_size,
+        unit_cost: product.cost_price, total_cost: product.pack_size * product.cost_price,
+        quantity_ordered: product.pack_size,
       };
       return [...prev, newItem];
     });
@@ -224,12 +215,7 @@ export default function PurchaseOrders() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nº Ordem</TableHead>
-                  <TableHead>Fornecedor</TableHead>
-                  <TableHead>Data Prevista</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Acções</TableHead>
+                  <TableHead>Nº Ordem</TableHead><TableHead>Fornecedor</TableHead><TableHead>Data Prevista</TableHead><TableHead>Total</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acções</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -253,9 +239,7 @@ export default function PurchaseOrders() {
                           </>
                         )}
                         {(o.status === "sent" || o.status === "partial") && (
-                          <Button variant="outline" size="sm" className="gap-1" onClick={() => navigate(`/recebimento?po=${o.id}`)}>
-                            <PackageCheck className="w-3.5 h-3.5" /> Receber
-                          </Button>
+                          <Button variant="outline" size="sm" className="gap-1" onClick={() => navigate(`/recebimento?po=${o.id}`)}><PackageCheck className="w-3.5 h-3.5" /> Receber</Button>
                         )}
                         {o.status === "draft" && (
                           <Button variant="ghost" size="sm" className="text-destructive" onClick={() => updateStatus.mutate({ id: o.id, status: "cancelled" })}>Cancelar</Button>
@@ -269,7 +253,6 @@ export default function PurchaseOrders() {
           </ScrollArea>
         </Card>
 
-        {/* Create/Edit Dialog — Fullscreen */}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] flex flex-col">
             <DialogHeader><DialogTitle>{selected ? `Editar ${selected.order_number}` : "Nova Ordem de Compra"}</DialogTitle></DialogHeader>
@@ -289,23 +272,14 @@ export default function PurchaseOrders() {
                   </div>
                 </div>
                 <div className="space-y-2"><Label>Notas</Label><Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} /></div>
-
-                {/* Items */}
                 <div className="space-y-2">
                   <Label>Itens</Label>
-                  <ProductSearchInput onSelect={handleProductSelect} dialogOpen={dialogOpen} />
+                  <ProductSearchInput products={dbProducts} onSelect={handleProductSelect} dialogOpen={dialogOpen} />
                   <div className="rounded-lg border overflow-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Produto</TableHead>
-                          <TableHead>SKU</TableHead>
-                          <TableHead className="w-24">Qtd Caixas</TableHead>
-                          <TableHead className="w-24">Un/Caixa</TableHead>
-                          <TableHead className="w-28">Total Un.</TableHead>
-                          <TableHead className="w-28">Custo Unit.</TableHead>
-                          <TableHead className="w-28">Total</TableHead>
-                          <TableHead className="w-10"></TableHead>
+                          <TableHead>Produto</TableHead><TableHead>SKU</TableHead><TableHead className="w-24">Qtd Caixas</TableHead><TableHead className="w-24">Un/Caixa</TableHead><TableHead className="w-28">Total Un.</TableHead><TableHead className="w-28">Custo Unit.</TableHead><TableHead className="w-28">Total</TableHead><TableHead className="w-10"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -326,11 +300,7 @@ export default function PurchaseOrders() {
                       </TableBody>
                     </Table>
                   </div>
-                  {items.length > 0 && (
-                    <div className="text-right text-sm font-semibold">
-                      Total: {formatKz(items.reduce((s, i) => s + i.total_cost, 0))}
-                    </div>
-                  )}
+                  {items.length > 0 && <div className="text-right text-sm font-semibold">Total: {formatKz(items.reduce((s, i) => s + i.total_cost, 0))}</div>}
                 </div>
               </div>
             </ScrollArea>

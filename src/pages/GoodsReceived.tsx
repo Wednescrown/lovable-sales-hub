@@ -4,28 +4,20 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Search, Plus, ReceiptText, Trash2, Undo2, Eye, PackageCheck,
-} from "lucide-react";
+import { Search, Plus, ReceiptText, Trash2, Undo2, Eye, PackageCheck } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { ProductSearchInput } from "@/components/compras/ProductSearchInput";
-import { Product } from "@/data/mockProducts";
+import { useProducts, type ProductRow } from "@/hooks/useProducts";
 
 interface Supplier { id: string; name: string; }
 interface GRN {
@@ -41,12 +33,11 @@ interface GRNReturn {
   id: string; grn_id: string; return_number: string; reason: string | null;
   total_amount: number; returned_at: string;
 }
-
 interface NewGRNItem {
   product_name: string; sku: string;
   box_quantity: number; pack_size: number; total_units: number;
   unit_cost: number; total_cost: number;
-  quantity_received: number; // = total_units, for DB compat
+  quantity_received: number;
 }
 
 const STATUS_LABELS: Record<string, string> = { received: "Recebido", returned: "Devolvido", corrected: "Corrigido" };
@@ -62,18 +53,16 @@ export default function GoodsReceived() {
   const queryClient = useQueryClient();
   const { companyId, activeUser, isAdmin } = useAuth();
   const [searchParams] = useSearchParams();
+  const { data: dbProducts = [] } = useProducts();
   const [search, setSearch] = useState("");
 
-  // GRN Form
   const [grnDialog, setGrnDialog] = useState(false);
   const [grnForm, setGrnForm] = useState({ supplier_id: "", notes: "", purchase_order_id: "" });
   const [grnItems, setGrnItems] = useState<NewGRNItem[]>([]);
 
-  // Detail panel
   const [detailGRN, setDetailGRN] = useState<GRN | null>(null);
   const [detailItems, setDetailItems] = useState<GRNItem[]>([]);
 
-  // Return dialog
   const [returnDialog, setReturnDialog] = useState(false);
   const [returnGRN, setReturnGRN] = useState<GRN | null>(null);
   const [returnItems, setReturnItems] = useState<{ grn_item_id: string; product_name: string; max_qty: number; quantity: number; unit_cost: number }[]>([]);
@@ -83,8 +72,7 @@ export default function GoodsReceived() {
   const { data: grns = [], isLoading } = useQuery({
     queryKey: ["goods_received_notes"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("goods_received_notes").select("*").order("created_at", { ascending: false });
+      const { data, error } = await (supabase as any).from("goods_received_notes").select("*").order("created_at", { ascending: false });
       if (error) throw error;
       return data as GRN[];
     },
@@ -93,8 +81,7 @@ export default function GoodsReceived() {
   const { data: suppliers = [] } = useQuery({
     queryKey: ["suppliers_active"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("suppliers").select("id, name").eq("is_active", true).order("name");
+      const { data, error } = await (supabase as any).from("suppliers").select("id, name").eq("is_active", true).order("name");
       if (error) throw error;
       return data as Supplier[];
     },
@@ -103,14 +90,12 @@ export default function GoodsReceived() {
   const { data: grnReturns = [] } = useQuery({
     queryKey: ["grn_returns"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("grn_returns").select("*").order("returned_at", { ascending: false });
+      const { data, error } = await (supabase as any).from("grn_returns").select("*").order("returned_at", { ascending: false });
       if (error) throw error;
       return data as GRNReturn[];
     },
   });
 
-  // Pre-fill from purchase order
   useEffect(() => {
     const poId = searchParams.get("po");
     if (poId && suppliers.length > 0) {
@@ -139,12 +124,8 @@ export default function GoodsReceived() {
       if (numErr) throw numErr;
       const totalAmount = grnItems.reduce((s, i) => s + i.total_cost, 0);
       const { data: newGrn, error } = await (supabase as any).from("goods_received_notes")
-        .insert({
-          company_id: companyId, supplier_id: grnForm.supplier_id,
-          purchase_order_id: grnForm.purchase_order_id || null,
-          grn_number: numData, notes: grnForm.notes || null,
-          total_amount: totalAmount, received_by: activeUser?.id,
-        }).select("id").single();
+        .insert({ company_id: companyId, supplier_id: grnForm.supplier_id, purchase_order_id: grnForm.purchase_order_id || null, grn_number: numData, notes: grnForm.notes || null, total_amount: totalAmount, received_by: activeUser?.id })
+        .select("id").single();
       if (error) throw error;
       if (grnItems.length > 0) {
         const rows = grnItems.map((i) => ({ grn_id: newGrn.id, product_name: i.product_name, sku: i.sku || null, quantity_received: i.total_units, unit_cost: i.unit_cost, total_cost: i.total_cost }));
@@ -159,9 +140,7 @@ export default function GoodsReceived() {
       queryClient.invalidateQueries({ queryKey: ["goods_received_notes"] });
       queryClient.invalidateQueries({ queryKey: ["purchase_orders"] });
       toast.success("Recebimento lançado com sucesso");
-      setGrnDialog(false);
-      setGrnItems([]);
-      setGrnForm({ supplier_id: "", notes: "", purchase_order_id: "" });
+      setGrnDialog(false); setGrnItems([]); setGrnForm({ supplier_id: "", notes: "", purchase_order_id: "" });
     },
     onError: (err) => toast.error((err as Error).message),
   });
@@ -174,17 +153,10 @@ export default function GoodsReceived() {
       const itemsToReturn = returnItems.filter((i) => i.quantity > 0);
       const totalAmount = itemsToReturn.reduce((s, i) => s + i.quantity * i.unit_cost, 0);
       const { data: newReturn, error } = await (supabase as any).from("grn_returns")
-        .insert({
-          company_id: companyId, grn_id: returnGRN.id,
-          return_number: numData, reason: returnReason || null,
-          total_amount: totalAmount, returned_by: activeUser?.id,
-        }).select("id").single();
+        .insert({ company_id: companyId, grn_id: returnGRN.id, return_number: numData, reason: returnReason || null, total_amount: totalAmount, returned_by: activeUser?.id })
+        .select("id").single();
       if (error) throw error;
-      const rows = itemsToReturn.map((i) => ({
-        grn_return_id: newReturn.id, grn_item_id: i.grn_item_id,
-        quantity_returned: i.quantity, unit_cost: i.unit_cost,
-        total_cost: i.quantity * i.unit_cost,
-      }));
+      const rows = itemsToReturn.map((i) => ({ grn_return_id: newReturn.id, grn_item_id: i.grn_item_id, quantity_returned: i.quantity, unit_cost: i.unit_cost, total_cost: i.quantity * i.unit_cost }));
       const { error: ie } = await (supabase as any).from("grn_return_items").insert(rows);
       if (ie) throw ie;
       await (supabase as any).from("goods_received_notes").update({ status: "returned" }).eq("id", returnGRN.id);
@@ -198,13 +170,9 @@ export default function GoodsReceived() {
     onError: (err) => toast.error((err as Error).message),
   });
 
-  const openDirectGRN = () => {
-    setGrnForm({ supplier_id: "", notes: "", purchase_order_id: "" });
-    setGrnItems([]);
-    setGrnDialog(true);
-  };
+  const openDirectGRN = () => { setGrnForm({ supplier_id: "", notes: "", purchase_order_id: "" }); setGrnItems([]); setGrnDialog(true); };
 
-  const handleProductSelect = (product: Product) => {
+  const handleProductSelect = (product: ProductRow) => {
     setGrnItems((prev) => {
       const existing = prev.findIndex((i) => i.sku === product.sku);
       if (existing >= 0) {
@@ -215,13 +183,12 @@ export default function GoodsReceived() {
           return { ...item, box_quantity: newBoxQty, total_units: newTotalUnits, quantity_received: newTotalUnits, total_cost: newTotalUnits * item.unit_cost };
         });
       }
-      const newItem: NewGRNItem = {
+      return [...prev, {
         product_name: product.name, sku: product.sku,
-        box_quantity: 1, pack_size: product.packSize,
-        total_units: product.packSize, quantity_received: product.packSize,
-        unit_cost: product.costPrice, total_cost: product.packSize * product.costPrice,
-      };
-      return [...prev, newItem];
+        box_quantity: 1, pack_size: product.pack_size,
+        total_units: product.pack_size, quantity_received: product.pack_size,
+        unit_cost: product.cost_price, total_cost: product.pack_size * product.cost_price,
+      }];
     });
   };
 
@@ -247,37 +214,21 @@ export default function GoodsReceived() {
 
   const openReturn = async (grn: GRN) => {
     const { data: allowed } = await (supabase as any).rpc("can_return_grn", { _grn_id: grn.id, _user_id: activeUser?.user_id });
-    if (!allowed) {
-      toast.error("Prazo de devolução expirado (2 dias). Apenas o administrador pode devolver.");
-      return;
-    }
-    setReturnGRN(grn);
-    setCanReturn(true);
-    setReturnReason("");
+    if (!allowed) { toast.error("Prazo de devolução expirado (2 dias). Apenas o administrador pode devolver."); return; }
+    setReturnGRN(grn); setCanReturn(true); setReturnReason("");
     const { data } = await (supabase as any).from("grn_items").select("*").eq("grn_id", grn.id);
-    setReturnItems((data ?? []).map((i: any) => ({
-      grn_item_id: i.id, product_name: i.product_name,
-      max_qty: Number(i.quantity_received), quantity: 0,
-      unit_cost: Number(i.unit_cost),
-    })));
+    setReturnItems((data ?? []).map((i: any) => ({ grn_item_id: i.id, product_name: i.product_name, max_qty: Number(i.quantity_received), quantity: 0, unit_cost: Number(i.unit_cost) })));
     setReturnDialog(true);
   };
 
   const getSupplierName = (id: string) => suppliers.find((s) => s.id === id)?.name ?? "—";
-
-  const filtered = grns.filter((g) =>
-    g.grn_number.toLowerCase().includes(search.toLowerCase()) ||
-    getSupplierName(g.supplier_id).toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = grns.filter((g) => g.grn_number.toLowerCase().includes(search.toLowerCase()) || getSupplierName(g.supplier_id).toLowerCase().includes(search.toLowerCase()));
 
   return (
     <AppLayout>
       <div className="p-4 md:p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Recebimento (GRN)</h1>
-            <p className="text-sm text-muted-foreground">Lançar e gerir recebimentos de mercadoria</p>
-          </div>
+          <div><h1 className="text-2xl font-bold text-foreground">Recebimento (GRN)</h1><p className="text-sm text-muted-foreground">Lançar e gerir recebimentos de mercadoria</p></div>
           <Button onClick={openDirectGRN} className="gap-2"><Plus className="w-4 h-4" /> Recebimento Directo</Button>
         </div>
 
@@ -287,54 +238,35 @@ export default function GoodsReceived() {
           <Card><CardContent className="flex items-center gap-3 p-4"><div className="p-2 rounded-lg bg-red-500/10"><Undo2 className="w-5 h-5 text-red-600" /></div><div><p className="text-2xl font-bold">{grnReturns.length}</p><p className="text-xs text-muted-foreground">Devoluções</p></div></CardContent></Card>
         </div>
 
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Pesquisar recebimentos..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
-        </div>
+        <div className="relative max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input placeholder="Pesquisar recebimentos..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" /></div>
 
-        {/* GRN History Table */}
         <Card>
           <CardHeader><CardTitle className="text-base">Histórico de Recebimentos</CardTitle></CardHeader>
           <ScrollArea className="h-[450px]">
             <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nº Documento</TableHead>
-                  <TableHead>Fornecedor</TableHead>
-                  <TableHead>Data Recebimento</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Acções</TableHead>
-                </TableRow>
-              </TableHeader>
+              <TableHeader><TableRow><TableHead>Nº Documento</TableHead><TableHead>Fornecedor</TableHead><TableHead>Data Recebimento</TableHead><TableHead>Total</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acções</TableHead></TableRow></TableHeader>
               <TableBody>
-                {isLoading ? (
-                  <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">A carregar...</TableCell></TableRow>
-                ) : filtered.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Nenhum recebimento encontrado.</TableCell></TableRow>
-                ) : (
-                  filtered.map((g) => (
-                    <TableRow key={g.id}>
-                      <TableCell className="font-medium font-mono">{g.grn_number}</TableCell>
-                      <TableCell>{getSupplierName(g.supplier_id)}</TableCell>
-                      <TableCell className="text-muted-foreground">{new Date(g.received_at).toLocaleDateString("pt-AO")}</TableCell>
-                      <TableCell>{formatKz(Number(g.total_amount))}</TableCell>
-                      <TableCell><Badge variant="outline" className={STATUS_COLORS[g.status] ?? ""}>{STATUS_LABELS[g.status] ?? g.status}</Badge></TableCell>
-                      <TableCell className="text-right space-x-1">
-                        <Button variant="ghost" size="icon" onClick={() => viewDetail(g)}><Eye className="w-4 h-4" /></Button>
-                        {g.status === "received" && (
-                          <Button variant="outline" size="sm" className="gap-1" onClick={() => openReturn(g)}><Undo2 className="w-3.5 h-3.5" /> Devolver</Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
+                {isLoading ? (<TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">A carregar...</TableCell></TableRow>
+                ) : filtered.length === 0 ? (<TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Nenhum recebimento encontrado.</TableCell></TableRow>
+                ) : filtered.map((g) => (
+                  <TableRow key={g.id}>
+                    <TableCell className="font-medium font-mono">{g.grn_number}</TableCell>
+                    <TableCell>{getSupplierName(g.supplier_id)}</TableCell>
+                    <TableCell className="text-muted-foreground">{new Date(g.received_at).toLocaleDateString("pt-AO")}</TableCell>
+                    <TableCell>{formatKz(Number(g.total_amount))}</TableCell>
+                    <TableCell><Badge variant="outline" className={STATUS_COLORS[g.status] ?? ""}>{STATUS_LABELS[g.status] ?? g.status}</Badge></TableCell>
+                    <TableCell className="text-right space-x-1">
+                      <Button variant="ghost" size="icon" onClick={() => viewDetail(g)}><Eye className="w-4 h-4" /></Button>
+                      {g.status === "received" && (<Button variant="outline" size="sm" className="gap-1" onClick={() => openReturn(g)}><Undo2 className="w-3.5 h-3.5" /> Devolver</Button>)}
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </ScrollArea>
         </Card>
 
-        {/* Detail Panel — Fullscreen */}
+        {/* Detail Dialog */}
         <Dialog open={!!detailGRN} onOpenChange={(open) => !open && setDetailGRN(null)}>
           <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] flex flex-col">
             <DialogHeader><DialogTitle>Detalhes — {detailGRN?.grn_number}</DialogTitle></DialogHeader>
@@ -352,15 +284,7 @@ export default function GoodsReceived() {
                     <Table>
                       <TableHeader><TableRow><TableHead>Produto</TableHead><TableHead>SKU</TableHead><TableHead>Qtd</TableHead><TableHead>Custo</TableHead><TableHead>Total</TableHead></TableRow></TableHeader>
                       <TableBody>
-                        {detailItems.map((i) => (
-                          <TableRow key={i.id}>
-                            <TableCell>{i.product_name}</TableCell>
-                            <TableCell className="text-muted-foreground">{i.sku ?? "—"}</TableCell>
-                            <TableCell>{i.quantity_received}</TableCell>
-                            <TableCell>{formatKz(i.unit_cost)}</TableCell>
-                            <TableCell>{formatKz(i.total_cost)}</TableCell>
-                          </TableRow>
-                        ))}
+                        {detailItems.map((i) => (<TableRow key={i.id}><TableCell>{i.product_name}</TableCell><TableCell className="text-muted-foreground">{i.sku ?? "—"}</TableCell><TableCell>{i.quantity_received}</TableCell><TableCell>{formatKz(i.unit_cost)}</TableCell><TableCell>{formatKz(i.total_cost)}</TableCell></TableRow>))}
                       </TableBody>
                     </Table>
                   </div>
@@ -369,10 +293,7 @@ export default function GoodsReceived() {
                       <h4 className="text-sm font-semibold">Devoluções</h4>
                       {grnReturns.filter((r) => r.grn_id === detailGRN.id).map((r) => (
                         <div key={r.id} className="p-3 rounded-lg border bg-muted/30 text-sm">
-                          <div className="flex justify-between">
-                            <span className="font-mono font-medium">{r.return_number}</span>
-                            <span className="text-muted-foreground">{new Date(r.returned_at).toLocaleDateString("pt-AO")}</span>
-                          </div>
+                          <div className="flex justify-between"><span className="font-mono font-medium">{r.return_number}</span><span className="text-muted-foreground">{new Date(r.returned_at).toLocaleDateString("pt-AO")}</span></div>
                           {r.reason && <p className="text-muted-foreground mt-1">{r.reason}</p>}
                           <p className="font-semibold mt-1">Total: {formatKz(Number(r.total_amount))}</p>
                         </div>
@@ -385,7 +306,7 @@ export default function GoodsReceived() {
           </DialogContent>
         </Dialog>
 
-        {/* GRN Form Dialog — Fullscreen */}
+        {/* GRN Form Dialog */}
         <Dialog open={grnDialog} onOpenChange={setGrnDialog}>
           <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] flex flex-col">
             <DialogHeader><DialogTitle>Novo Recebimento</DialogTitle></DialogHeader>
@@ -394,33 +315,18 @@ export default function GoodsReceived() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Fornecedor *</Label>
-                    <Select value={grnForm.supplier_id} onValueChange={(v) => setGrnForm((f) => ({ ...f, supplier_id: v }))}>
-                      <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
-                      <SelectContent>{suppliers.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent>
-                    </Select>
+                    <Select value={grnForm.supplier_id} onValueChange={(v) => setGrnForm((f) => ({ ...f, supplier_id: v }))}><SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger><SelectContent>{suppliers.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent></Select>
                   </div>
                   <div className="space-y-2"><Label>Notas</Label><Textarea value={grnForm.notes} onChange={(e) => setGrnForm((f) => ({ ...f, notes: e.target.value }))} rows={2} /></div>
                 </div>
                 <div className="space-y-2">
                   <Label>Itens Recebidos</Label>
-                  <ProductSearchInput onSelect={handleProductSelect} dialogOpen={grnDialog} />
+                  <ProductSearchInput products={dbProducts} onSelect={handleProductSelect} dialogOpen={grnDialog} />
                   <div className="rounded-lg border overflow-auto">
                     <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Produto</TableHead>
-                          <TableHead>SKU</TableHead>
-                          <TableHead className="w-24">Qtd Caixas</TableHead>
-                          <TableHead className="w-24">Un/Caixa</TableHead>
-                          <TableHead className="w-28">Total Un.</TableHead>
-                          <TableHead className="w-28">Custo Unit.</TableHead>
-                          <TableHead className="w-28">Total</TableHead>
-                          <TableHead className="w-10"></TableHead>
-                        </TableRow>
-                      </TableHeader>
+                      <TableHeader><TableRow><TableHead>Produto</TableHead><TableHead>SKU</TableHead><TableHead className="w-24">Qtd Caixas</TableHead><TableHead className="w-24">Un/Caixa</TableHead><TableHead className="w-28">Total Un.</TableHead><TableHead className="w-28">Custo Unit.</TableHead><TableHead className="w-28">Total</TableHead><TableHead className="w-10"></TableHead></TableRow></TableHeader>
                       <TableBody>
-                        {grnItems.length === 0 ? (
-                          <TableRow><TableCell colSpan={8} className="text-center py-4 text-muted-foreground text-sm">Pesquise ou escaneie produtos para adicionar</TableCell></TableRow>
+                        {grnItems.length === 0 ? (<TableRow><TableCell colSpan={8} className="text-center py-4 text-muted-foreground text-sm">Pesquise ou escaneie produtos para adicionar</TableCell></TableRow>
                         ) : grnItems.map((item, idx) => (
                           <TableRow key={idx}>
                             <TableCell className="text-sm font-medium">{item.product_name}</TableCell>
@@ -442,14 +348,12 @@ export default function GoodsReceived() {
             </ScrollArea>
             <DialogFooter className="pt-4 border-t">
               <Button variant="outline" onClick={() => setGrnDialog(false)}>Cancelar</Button>
-              <Button onClick={() => createGRN.mutate()} disabled={createGRN.isPending || !grnForm.supplier_id || grnItems.length === 0}>
-                {createGRN.isPending ? "A lançar..." : "Lançar Recebimento"}
-              </Button>
+              <Button onClick={() => createGRN.mutate()} disabled={createGRN.isPending || !grnForm.supplier_id || grnItems.length === 0}>{createGRN.isPending ? "A lançar..." : "Lançar Recebimento"}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* Return Dialog — Fullscreen */}
+        {/* Return Dialog */}
         <Dialog open={returnDialog} onOpenChange={setReturnDialog}>
           <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] flex flex-col">
             <DialogHeader><DialogTitle>Devolução — {returnGRN?.grn_number}</DialogTitle></DialogHeader>
@@ -466,28 +370,20 @@ export default function GoodsReceived() {
                           <TableRow key={item.grn_item_id}>
                             <TableCell>{item.product_name}</TableCell>
                             <TableCell className="text-muted-foreground">{item.max_qty}</TableCell>
-                            <TableCell>
-                              <Input type="number" value={item.quantity} min={0} max={item.max_qty}
-                                onChange={(e) => setReturnItems(returnItems.map((ri, i) => i === idx ? { ...ri, quantity: Math.min(Number(e.target.value), ri.max_qty) } : ri))}
-                                className="h-8" />
-                            </TableCell>
+                            <TableCell><Input type="number" value={item.quantity} min={0} max={item.max_qty} onChange={(e) => setReturnItems(returnItems.map((ri, i) => i === idx ? { ...ri, quantity: Math.min(Number(e.target.value), ri.max_qty) } : ri))} className="h-8" /></TableCell>
                             <TableCell className="text-sm">{formatKz(item.quantity * item.unit_cost)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
                   </div>
-                  <div className="text-right text-sm font-semibold">
-                    Total devolução: {formatKz(returnItems.reduce((s, i) => s + i.quantity * i.unit_cost, 0))}
-                  </div>
+                  <div className="text-right text-sm font-semibold">Total devolução: {formatKz(returnItems.reduce((s, i) => s + i.quantity * i.unit_cost, 0))}</div>
                 </div>
               </div>
             </ScrollArea>
             <DialogFooter className="pt-4 border-t">
               <Button variant="outline" onClick={() => setReturnDialog(false)}>Cancelar</Button>
-              <Button variant="destructive" onClick={() => createReturn.mutate()} disabled={createReturn.isPending || returnItems.every((i) => i.quantity === 0)}>
-                {createReturn.isPending ? "A processar..." : "Confirmar Devolução"}
-              </Button>
+              <Button variant="destructive" onClick={() => createReturn.mutate()} disabled={createReturn.isPending || returnItems.every((i) => i.quantity === 0)}>{createReturn.isPending ? "A processar..." : "Confirmar Devolução"}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
