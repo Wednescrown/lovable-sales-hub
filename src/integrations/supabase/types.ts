@@ -308,6 +308,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_has_pin: { Args: { _profile_id: string }; Returns: boolean }
       get_user_company_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {

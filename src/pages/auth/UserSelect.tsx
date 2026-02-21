@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Loader2, AlertCircle, Lock, LogOut, Store } from "lucide-react";
+import { Loader2, AlertCircle, Lock, LogOut, Store, KeyRound } from "lucide-react";
 
 interface Profile {
   id: string;
@@ -21,13 +21,16 @@ interface Profile {
 }
 
 export default function UserSelect() {
-  const { isCompanyAuthenticated, isUserSelected, companyId, selectUser, closeCompany, isAdmin } = useAuth();
+  const { isCompanyAuthenticated, isUserSelected, companyId, selectUser, closeCompany } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
   const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [validating, setValidating] = useState(false);
+  const [hasPin, setHasPin] = useState<boolean | null>(null);
+  const [checkingPin, setCheckingPin] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -55,10 +58,66 @@ export default function UserSelect() {
   if (!isCompanyAuthenticated) return <Navigate to="/auth/company" replace />;
   if (isUserSelected) return <Navigate to="/" replace />;
 
-  const handleSelectProfile = (profile: Profile) => {
+  const handleSelectProfile = async (profile: Profile) => {
     setSelectedProfile(profile);
     setPin("");
+    setConfirmPin("");
     setPinError("");
+    setHasPin(null);
+    setCheckingPin(true);
+
+    try {
+      const { data, error } = await supabase.rpc("check_has_pin", {
+        _profile_id: profile.id,
+      });
+      if (error) {
+        setHasPin(true); // fallback: assume has pin
+      } else {
+        setHasPin(!!data);
+      }
+    } catch {
+      setHasPin(true);
+    } finally {
+      setCheckingPin(false);
+    }
+  };
+
+  const handleSetPin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProfile || !pin) return;
+
+    if (pin.length < 4) {
+      setPinError("O PIN deve ter pelo menos 4 dígitos");
+      return;
+    }
+
+    if (pin !== confirmPin) {
+      setPinError("Os PINs não coincidem");
+      return;
+    }
+
+    setValidating(true);
+    setPinError("");
+
+    try {
+      const { error } = await supabase.rpc("set_user_pin", {
+        _profile_id: selectedProfile.id,
+        _pin: pin,
+      });
+
+      if (error) {
+        setPinError("Erro ao definir PIN. Tente novamente.");
+        return;
+      }
+
+      // PIN set successfully, log in
+      selectUser(selectedProfile);
+      navigate("/");
+    } catch {
+      setPinError("Erro inesperado");
+    } finally {
+      setValidating(false);
+    }
   };
 
   const handleValidatePin = async (e: React.FormEvent) => {
@@ -91,6 +150,11 @@ export default function UserSelect() {
     } finally {
       setValidating(false);
     }
+  };
+
+  const handleCloseCompany = async () => {
+    await closeCompany();
+    navigate("/auth/company");
   };
 
   const getInitials = (name: string) =>
@@ -146,12 +210,13 @@ export default function UserSelect() {
         </Card>
 
         <div className="mt-4 text-center">
-          <Button variant="ghost" size="sm" onClick={closeCompany} className="text-destructive hover:text-destructive">
+          <Button variant="ghost" size="sm" onClick={handleCloseCompany} className="text-destructive hover:text-destructive">
             <LogOut className="w-4 h-4 mr-1" />
             Fechar Empresa
           </Button>
         </div>
 
+        {/* PIN Dialog */}
         <Dialog open={!!selectedProfile} onOpenChange={(open) => !open && setSelectedProfile(null)}>
           <DialogContent className="sm:max-w-sm">
             <DialogHeader className="text-center">
@@ -164,34 +229,85 @@ export default function UserSelect() {
                 </Avatar>
               </div>
               <DialogTitle>{selectedProfile?.display_name || selectedProfile?.full_name}</DialogTitle>
-              <DialogDescription>Insira o seu PIN para aceder ao sistema</DialogDescription>
+              <DialogDescription>
+                {checkingPin
+                  ? "A verificar..."
+                  : hasPin === false
+                  ? "Defina o seu PIN para aceder ao sistema"
+                  : "Insira o seu PIN para aceder ao sistema"}
+              </DialogDescription>
             </DialogHeader>
 
-            <form onSubmit={handleValidatePin} className="space-y-4">
-              {pinError && (
-                <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{pinError}</span>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <Lock className="w-4 h-4 text-muted-foreground" />
-                <Input
-                  type="password"
-                  placeholder="••••"
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  required
-                  autoFocus
-                  className="text-center text-lg tracking-widest"
-                />
+            {checkingPin ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
               </div>
-              <Button type="submit" className="w-full" disabled={validating || !pin}>
-                {validating ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" />A validar...</>
-                ) : "Confirmar"}
-              </Button>
-            </form>
+            ) : hasPin === false ? (
+              /* SET PIN FORM */
+              <form onSubmit={handleSetPin} className="space-y-4">
+                {pinError && (
+                  <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{pinError}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="password"
+                    placeholder="Novo PIN (mín. 4 dígitos)"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value)}
+                    required
+                    autoFocus
+                    className="text-center text-lg tracking-widest"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="password"
+                    placeholder="Confirmar PIN"
+                    value={confirmPin}
+                    onChange={(e) => setConfirmPin(e.target.value)}
+                    required
+                    className="text-center text-lg tracking-widest"
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={validating || !pin || !confirmPin}>
+                  {validating ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" />A definir...</>
+                  ) : "Definir PIN e Entrar"}
+                </Button>
+              </form>
+            ) : (
+              /* VALIDATE PIN FORM */
+              <form onSubmit={handleValidatePin} className="space-y-4">
+                {pinError && (
+                  <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{pinError}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="password"
+                    placeholder="••••"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value)}
+                    required
+                    autoFocus
+                    className="text-center text-lg tracking-widest"
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={validating || !pin}>
+                  {validating ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" />A validar...</>
+                  ) : "Confirmar"}
+                </Button>
+              </form>
+            )}
           </DialogContent>
         </Dialog>
       </div>
