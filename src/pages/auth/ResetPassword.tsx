@@ -66,9 +66,7 @@ export default function ResetPassword() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg">
-            <Store className="w-8 h-8 text-primary-foreground" />
-          </div>
+          <img src="/images/bg-angopos.jpeg" alt="AngoPOS" className="w-20 h-20 rounded-2xl object-cover shadow-lg" />
           <h1 className="text-2xl font-bold text-foreground">AngoPos</h1>
           <p className="text-sm text-muted-foreground">Redefinir Senha</p>
         </div>
