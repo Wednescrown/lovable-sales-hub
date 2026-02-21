@@ -36,38 +36,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    // Listen for auth state changes FIRST
+    let isMounted = true;
+
+    const fetchCompanyId = async (userId: string) => {
+      try {
+        const { data } = await supabase.rpc("get_user_company_id", {
+          _user_id: userId,
+        });
+        if (isMounted && data) {
+          setCompanyId(data);
+          localStorage.setItem("angopos_company_id", data);
+        }
+      } catch {
+        // silently fail — companyId stays null
+      }
+    };
+
+    // Listener for ONGOING auth changes (does NOT control isLoading)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
+      (_event, newSession) => {
+        if (!isMounted) return;
         setSession(newSession);
         if (newSession?.user) {
-          // Fetch company_id from profile
-          const { data } = await supabase.rpc("get_user_company_id", {
-            _user_id: newSession.user.id,
-          });
-          if (data) {
-            setCompanyId(data);
-            localStorage.setItem("angopos_company_id", data);
-          }
+          setTimeout(() => fetchCompanyId(newSession.user.id), 0);
         } else {
           setCompanyId(null);
           setActiveUser(null);
           localStorage.removeItem("angopos_company_id");
           localStorage.removeItem("angopos_active_user");
         }
-        setIsLoading(false);
       }
     );
 
-    // Then check existing session
-    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
-      if (!existingSession) {
-        setIsLoading(false);
+    // INITIAL load (controls isLoading)
+    const initializeAuth = async () => {
+      try {
+        const { data: { session: existingSession } } = await supabase.auth.getSession();
+        if (!isMounted) return;
+        setSession(existingSession);
+        if (existingSession?.user) {
+          await fetchCompanyId(existingSession.user.id);
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
       }
-      // onAuthStateChange will handle the rest
-    });
+    };
 
-    return () => subscription.unsubscribe();
+    initializeAuth();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Check admin role when activeUser changes
