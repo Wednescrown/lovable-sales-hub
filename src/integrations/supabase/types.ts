@@ -41,6 +41,48 @@ export type Database = {
         }
         Relationships: []
       }
+      branch_stock: {
+        Row: {
+          branch_id: string
+          company_id: string
+          id: string
+          product_id: string
+          quantity: number
+          updated_at: string
+        }
+        Insert: {
+          branch_id: string
+          company_id: string
+          id?: string
+          product_id: string
+          quantity?: number
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string
+          company_id?: string
+          id?: string
+          product_id?: string
+          quantity?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "branch_stock_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_stock_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       branches: {
         Row: {
           address: string | null

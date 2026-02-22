@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { AppLayout } from "@/components/AppLayout";
-import { PackageCheck, Search, AlertTriangle, Package, TrendingDown, DollarSign, Upload, ChevronUp, ChevronDown, ArrowUpDown } from "lucide-react";
+import { PackageCheck, Search, AlertTriangle, Package, TrendingDown, DollarSign, Upload, ChevronUp, ChevronDown, ArrowUpDown, Building2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useProducts, type ProductRow } from "@/hooks/useProducts";
 import { useCategories, useAllSubcategories } from "@/hooks/useCategories";
+import { useBranches } from "@/hooks/useBranches";
+import { useBranchStock } from "@/hooks/useBranchStock";
 import { StockImportDialog } from "@/components/stock/StockImportDialog";
 
 function formatKz(value: number) {
@@ -36,14 +38,18 @@ const StockAvailable = () => {
   const { data: products = [], isLoading } = useProducts();
   const { data: categories = [] } = useCategories();
   const { data: subcategories = [] } = useAllSubcategories();
+  const { data: branches = [] } = useBranches();
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subcategoryFilter, setSubcategoryFilter] = useState("all");
   const [stockStatusFilter, setStockStatusFilter] = useState<"all" | StockStatus>("all");
+  const [branchFilter, setBranchFilter] = useState("all");
   const [importOpen, setImportOpen] = useState(false);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+
+  const { data: branchStockData = [] } = useBranchStock(branchFilter !== "all" ? branchFilter : undefined);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -59,6 +65,29 @@ const StockAvailable = () => {
     return sortDirection === "asc" ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />;
   };
 
+  // Build a map of product_id -> quantity from branch_stock when filtering by branch
+  const branchStockMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (branchFilter === "all") return map;
+    for (const bs of branchStockData) {
+      map.set(bs.product_id, (map.get(bs.product_id) || 0) + bs.quantity);
+    }
+    return map;
+  }, [branchStockData, branchFilter]);
+
+  // Helper to get effective stock for a product (branch-specific or global)
+  const getEffectiveStock = (product: ProductRow): number => {
+    if (branchFilter === "all") return product.stock;
+    return branchStockMap.get(product.id) ?? 0;
+  };
+
+  const getEffectiveStockStatus = (product: ProductRow): StockStatus => {
+    const stock = getEffectiveStock(product);
+    if (stock <= 0) return "out";
+    if (stock <= product.min_stock) return "low";
+    return "normal";
+  };
+
   const activeProducts = products.filter((p) => p.status === "active");
 
   const filteredProducts = activeProducts.filter((p) => {
@@ -67,7 +96,8 @@ const StockAvailable = () => {
       p.sku.toLowerCase().includes(search.toLowerCase());
     const matchCategory = categoryFilter === "all" || p.category_id === categoryFilter;
     const matchSubcategory = subcategoryFilter === "all" || p.subcategory_id === subcategoryFilter;
-    const matchStatus = stockStatusFilter === "all" || getStockStatus(p) === stockStatusFilter;
+    const matchStatus = stockStatusFilter === "all" || getEffectiveStockStatus(p) === stockStatusFilter;
+    // When filtering by branch, only show products that have branch_stock records (or show all with 0)
     return matchSearch && matchCategory && matchSubcategory && matchStatus;
   });
 
@@ -78,22 +108,22 @@ const StockAvailable = () => {
       case "name": return dir * a.name.localeCompare(b.name);
       case "sku": return dir * a.sku.localeCompare(b.sku);
       case "category": return dir * (a.category_name || "").localeCompare(b.category_name || "");
-      case "stock": return dir * (a.stock - b.stock);
+      case "stock": return dir * (getEffectiveStock(a) - getEffectiveStock(b));
       case "min_stock": return dir * (a.min_stock - b.min_stock);
       case "cost_price": return dir * (a.cost_price - b.cost_price);
-      case "total_value": return dir * ((a.stock * a.cost_price) - (b.stock * b.cost_price));
+      case "total_value": return dir * ((getEffectiveStock(a) * a.cost_price) - (getEffectiveStock(b) * b.cost_price));
       case "status": {
         const order: Record<StockStatus, number> = { out: 0, low: 1, normal: 2 };
-        return dir * (order[getStockStatus(a)] - order[getStockStatus(b)]);
+        return dir * (order[getEffectiveStockStatus(a)] - order[getEffectiveStockStatus(b)]);
       }
       default: return 0;
     }
   });
 
   const totalProducts = activeProducts.length;
-  const lowStockCount = activeProducts.filter((p) => getStockStatus(p) === "low").length;
-  const outOfStockCount = activeProducts.filter((p) => getStockStatus(p) === "out").length;
-  const totalStockValue = activeProducts.reduce((sum, p) => sum + p.stock * p.cost_price, 0);
+  const lowStockCount = activeProducts.filter((p) => getEffectiveStockStatus(p) === "low").length;
+  const outOfStockCount = activeProducts.filter((p) => getEffectiveStockStatus(p) === "out").length;
+  const totalStockValue = activeProducts.reduce((sum, p) => sum + getEffectiveStock(p) * p.cost_price, 0);
 
   const filteredSubcategories = categoryFilter === "all"
     ? subcategories
@@ -205,6 +235,16 @@ const StockAvailable = () => {
                   <SelectItem value="out">Sem Stock</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={branchFilter} onValueChange={setBranchFilter}>
+                <SelectTrigger className="w-[170px] h-9 text-sm">
+                  <Building2 className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                  <SelectValue placeholder="Filial" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas Filiais</SelectItem>
+                  {branches.map((b) => (<SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>))}
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>
@@ -232,8 +272,9 @@ const StockAvailable = () => {
               </TableHeader>
               <TableBody>
                 {sortedProducts.map((product, idx) => {
-                  const status = getStockStatus(product);
-                  const totalValue = product.stock * product.cost_price;
+                  const effectiveStock = getEffectiveStock(product);
+                  const status = getEffectiveStockStatus(product);
+                  const totalValue = effectiveStock * product.cost_price;
                   return (
                     <TableRow key={product.id} className={status === "out" ? "bg-destructive/5" : status === "low" ? "bg-warning/5" : ""}>
                       <TableCell className="text-xs text-muted-foreground">{idx + 1}</TableCell>
@@ -248,7 +289,7 @@ const StockAvailable = () => {
                       </TableCell>
                       <TableCell className="text-center">
                         <span className={`text-sm font-bold ${status === "out" ? "text-destructive" : status === "low" ? "text-warning" : "text-foreground"}`}>
-                          {product.stock}
+                          {effectiveStock}
                         </span>
                       </TableCell>
                       <TableCell className="text-center text-xs text-muted-foreground">{product.min_stock}</TableCell>
