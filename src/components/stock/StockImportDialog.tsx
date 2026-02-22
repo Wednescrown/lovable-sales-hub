@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Upload, ArrowRight, ArrowLeft, Check, AlertTriangle, FileSpreadsheet, Link2 } from "lucide-react";
+import { Upload, ArrowRight, ArrowLeft, Check, AlertTriangle, FileSpreadsheet, Link2, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useProducts, useProductMutations, type ProductRow } from "@/hooks/useProducts";
+import { useBranches } from "@/hooks/useBranches";
+import { useBranchStockMutations } from "@/hooks/useBranchStock";
 
 interface StockImportDialogProps {
   open: boolean;
@@ -26,14 +28,17 @@ const SYSTEM_FIELDS: SystemField[] = [
   { key: "quantity", label: "Quantidade", required: true, description: "Nova quantidade em stock" },
 ];
 
-type Step = "upload" | "mapping" | "preview" | "importing";
+type Step = "branch" | "upload" | "mapping" | "preview" | "importing";
 
 export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps) {
   const { toast } = useToast();
   const { data: products = [] } = useProducts();
+  const { data: branches = [] } = useBranches();
   const { updateProduct } = useProductMutations();
+  const { upsertBranchStock } = useBranchStockMutations();
 
-  const [step, setStep] = useState<Step>("upload");
+  const [step, setStep] = useState<Step>("branch");
+  const [selectedBranchId, setSelectedBranchId] = useState<string>("");
   const [fileData, setFileData] = useState<string[][]>([]);
   const [fileName, setFileName] = useState("");
   const [mapping, setMapping] = useState<Record<string, string>>({});
@@ -43,8 +48,11 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
   const fileHeaders = fileData.length > 0 ? fileData[0] : [];
   const fileRows = fileData.slice(1);
 
+  const selectedBranch = branches.find((b) => b.id === selectedBranchId);
+
   const reset = () => {
-    setStep("upload");
+    setStep("branch");
+    setSelectedBranchId("");
     setFileData([]);
     setFileName("");
     setMapping({});
@@ -158,6 +166,13 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
       }
 
       try {
+        // Update branch_stock for the selected branch
+        await upsertBranchStock.mutateAsync({
+          product_id: product.id,
+          branch_id: selectedBranchId,
+          quantity: newStock,
+        });
+        // Also update the global product stock (sum would be ideal but for now set it)
         await updateProduct.mutateAsync({ id: product.id, stock: newStock });
       } catch {
         errors++;
@@ -169,7 +184,7 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
     const updated = total - errors - notFound;
     toast({
       title: "Importação de stock concluída",
-      description: `${updated} produtos actualizados.${notFound > 0 ? ` ${notFound} não encontrados.` : ""}${errors > 0 ? ` ${errors} erros.` : ""}`,
+      description: `${updated} produtos actualizados na filial ${selectedBranch?.name || ""}.${notFound > 0 ? ` ${notFound} não encontrados.` : ""}${errors > 0 ? ` ${errors} erros.` : ""}`,
     });
   };
 
@@ -182,6 +197,7 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
             Importar Quantidades de Stock
           </DialogTitle>
           <DialogDescription>
+            {step === "branch" && "Selecione a filial que vai receber as quantidades importadas."}
             {step === "upload" && "Selecione um ficheiro CSV ou Excel com as quantidades a importar."}
             {step === "mapping" && "Ligue os campos do ficheiro aos campos do sistema para identificar produtos e quantidades."}
             {step === "preview" && "Verifique a correspondência entre os produtos do sistema e o ficheiro."}
@@ -192,9 +208,10 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
         {/* Steps indicator */}
         <div className="flex items-center gap-2 px-1">
           {[
-            { key: "upload", label: "1. Ficheiro" },
-            { key: "mapping", label: "2. Mapeamento" },
-            { key: "preview", label: "3. Pré-visualização" },
+            { key: "branch", label: "1. Filial" },
+            { key: "upload", label: "2. Ficheiro" },
+            { key: "mapping", label: "3. Mapeamento" },
+            { key: "preview", label: "4. Pré-visualização" },
           ].map((s, i) => (
             <div key={s.key} className="flex items-center gap-2">
               {i > 0 && <ArrowRight className="w-3 h-3 text-muted-foreground" />}
@@ -209,7 +226,35 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
         </div>
 
         <div className="flex-1 overflow-auto min-h-0">
-          {/* Step 1: Upload */}
+          {/* Step 1: Branch Selection */}
+          {step === "branch" && (
+            <div className="flex flex-col items-center justify-center py-16 gap-6">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <Building2 className="w-8 h-8 text-primary" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-foreground">Selecione a filial destino</p>
+                <p className="text-xs text-muted-foreground mt-1">As quantidades importadas serão atribuídas a esta filial</p>
+              </div>
+              <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+                <SelectTrigger className="w-[280px] h-10">
+                  <SelectValue placeholder="Selecionar filial..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {branches.map((branch) => (
+                    <SelectItem key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {branches.length === 0 && (
+                <p className="text-xs text-destructive">Nenhuma filial activa encontrada. Crie uma filial primeiro.</p>
+              )}
+            </div>
+          )}
+
+          {/* Step 2: Upload */}
           {step === "upload" && (
             <div className="flex flex-col items-center justify-center py-16 gap-4">
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
@@ -217,7 +262,10 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
               </div>
               <div className="text-center">
                 <p className="text-sm font-medium text-foreground">Selecione o ficheiro com quantidades</p>
-                <p className="text-xs text-muted-foreground mt-1">O ficheiro deve ter uma coluna de código de barras ou SKU e uma coluna de quantidade</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Filial: <span className="font-medium text-foreground">{selectedBranch?.name}</span>
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">O ficheiro deve ter uma coluna de código de barras e uma coluna de quantidade</p>
               </div>
               <label className="cursor-pointer">
                 <input type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={handleFileUpload} />
@@ -228,12 +276,13 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
             </div>
           )}
 
-          {/* Step 2: Mapping */}
+          {/* Step 3: Mapping */}
           {step === "mapping" && (
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 <span>{fileName} — {fileHeaders.length} colunas, {fileRows.length} linhas</span>
+                <span className="ml-auto">Filial: <span className="font-medium text-foreground">{selectedBranch?.name}</span></span>
               </div>
 
               <div className="border rounded-lg overflow-hidden">
@@ -310,11 +359,11 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
             </div>
           )}
 
-          {/* Step 3: Preview */}
+          {/* Step 4: Preview */}
           {step === "preview" && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                Pré-visualização da correspondência. Produtos não encontrados serão ignorados.
+                Pré-visualização da correspondência para a filial <span className="font-medium text-foreground">{selectedBranch?.name}</span>. Produtos não encontrados serão ignorados.
               </p>
               <ScrollArea className="border rounded-lg max-h-[400px]">
                 <Table>
@@ -356,7 +405,7 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
             </div>
           )}
 
-          {/* Step 4: Importing */}
+          {/* Step 5: Importing */}
           {step === "importing" && (
             <div className="flex flex-col items-center justify-center py-12 gap-4">
               <div className="w-full max-w-sm">
@@ -379,7 +428,7 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
                   <Check className="w-8 h-8 text-success mx-auto mb-2" />
                   <p className="text-sm font-medium">Importação concluída!</p>
                   <p className="text-xs text-muted-foreground">
-                    {importProgress.total - importProgress.errors - importProgress.notFound} produtos actualizados.
+                    {importProgress.total - importProgress.errors - importProgress.notFound} produtos actualizados na filial {selectedBranch?.name}.
                   </p>
                 </div>
               )}
@@ -388,9 +437,21 @@ export function StockImportDialog({ open, onOpenChange }: StockImportDialogProps
         </div>
 
         <DialogFooter className="flex-shrink-0">
+          {step === "branch" && (
+            <Button size="sm" disabled={!selectedBranchId} onClick={() => setStep("upload")}>
+              Continuar<ArrowRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          )}
+          {step === "upload" && (
+            <Button variant="outline" size="sm" onClick={() => setStep("branch")}>
+              <ArrowLeft className="w-3.5 h-3.5 mr-1" />Voltar
+            </Button>
+          )}
           {step === "mapping" && (
             <>
-              <Button variant="outline" size="sm" onClick={reset}><ArrowLeft className="w-3.5 h-3.5 mr-1" />Voltar</Button>
+              <Button variant="outline" size="sm" onClick={() => { setFileData([]); setFileName(""); setMapping({}); setStep("upload"); }}>
+                <ArrowLeft className="w-3.5 h-3.5 mr-1" />Voltar
+              </Button>
               <Button size="sm" disabled={!canProceed} onClick={() => setStep("preview")}>Continuar<ArrowRight className="w-3.5 h-3.5 ml-1" /></Button>
             </>
           )}
