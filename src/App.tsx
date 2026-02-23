@@ -25,6 +25,7 @@ import Suppliers from "./pages/Suppliers";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import GoodsReceived from "./pages/GoodsReceived";
 import StockAvailable from "./pages/StockAvailable";
+import StockTransfer from "./pages/StockTransfer";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -62,6 +63,7 @@ const App = () => (
             <Route path="/lista-compras" element={<ProtectedRoute><PurchaseOrders /></ProtectedRoute>} />
             <Route path="/recebimento" element={<ProtectedRoute><GoodsReceived /></ProtectedRoute>} />
             <Route path="/estoque" element={<ProtectedRoute><StockAvailable /></ProtectedRoute>} />
+            <Route path="/movimentacao" element={<ProtectedRoute><StockTransfer /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

@@ -761,6 +761,99 @@ export type Database = {
           },
         ]
       }
+      stock_transfer_items: {
+        Row: {
+          id: string
+          product_id: string
+          quantity: number
+          transfer_id: string
+        }
+        Insert: {
+          id?: string
+          product_id: string
+          quantity?: number
+          transfer_id: string
+        }
+        Update: {
+          id?: string
+          product_id?: string
+          quantity?: number
+          transfer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfer_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfer_items_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "stock_transfers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_transfers: {
+        Row: {
+          company_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          from_branch_id: string
+          id: string
+          notes: string | null
+          status: string
+          to_branch_id: string
+          transfer_number: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          from_branch_id: string
+          id?: string
+          notes?: string | null
+          status?: string
+          to_branch_id: string
+          transfer_number: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          from_branch_id?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          to_branch_id?: string
+          transfer_number?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfers_from_branch_id_fkey"
+            columns: ["from_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_to_branch_id_fkey"
+            columns: ["to_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subcategories: {
         Row: {
           category_id: string
@@ -955,6 +1048,10 @@ export type Database = {
         Returns: string
       }
       generate_next_return_number: {
+        Args: { _company_id: string }
+        Returns: string
+      }
+      generate_next_transfer_number: {
         Args: { _company_id: string }
         Returns: string
       }
