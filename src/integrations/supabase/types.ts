@@ -528,6 +528,41 @@ export type Database = {
         }
         Relationships: []
       }
+      product_images: {
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          position: number
+          product_id: string
+          storage_path: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          id?: string
+          position?: number
+          product_id: string
+          storage_path: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          id?: string
+          position?: number
+          product_id?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_images_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           barcode: string | null
@@ -542,7 +577,6 @@ export type Database = {
           sell_price: number
           sku: string
           status: string
-          stock: number
           subcategory_id: string | null
           unit: string
           updated_at: string
@@ -560,7 +594,6 @@ export type Database = {
           sell_price?: number
           sku: string
           status?: string
-          stock?: number
           subcategory_id?: string | null
           unit?: string
           updated_at?: string
@@ -578,7 +611,6 @@ export type Database = {
           sell_price?: number
           sku?: string
           status?: string
-          stock?: number
           subcategory_id?: string | null
           unit?: string
           updated_at?: string

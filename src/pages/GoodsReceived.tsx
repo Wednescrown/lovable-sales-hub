@@ -138,7 +138,7 @@ export default function GoodsReceived() {
           const matchedProduct = dbProducts.find((p) => p.sku === item.sku);
           if (matchedProduct) {
             const newStock = matchedProduct.stock + item.total_units;
-            await supabase.from("products").update({ stock: newStock }).eq("id", matchedProduct.id);
+            await (supabase as any).from("products").update({ stock: newStock }).eq("id", matchedProduct.id);
           }
         }
       }
