@@ -1,8 +1,10 @@
+import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { type ProductRow } from "@/hooks/useProducts";
+import { useProductThumbnails } from "@/hooks/useProductImages";
 import { Package } from "lucide-react";
 
 interface CategoryItem {
@@ -25,6 +27,9 @@ function formatKz(value: number) {
 }
 
 export function POSProductGrid({ products, categories, activeCategory, onCategoryChange, searchQuery, viewMode, onAddToCart }: POSProductGridProps) {
+  const productIds = useMemo(() => products.map((p) => p.id), [products]);
+  const { data: thumbnails } = useProductThumbnails(productIds);
+
   const filteredProducts = products.filter((p) => {
     const matchesCategory = activeCategory === "all" || p.category_id === activeCategory;
     const matchesSearch =
@@ -73,8 +78,12 @@ export function POSProductGrid({ products, categories, activeCategory, onCategor
                     outOfStock ? "opacity-50 cursor-not-allowed" : ""
                   }`}
                 >
-                  <div className="flex items-center justify-center h-12 bg-muted rounded-md mb-2">
-                    <Package className="h-6 w-6 text-muted-foreground" />
+                  <div className="flex items-center justify-center h-12 bg-muted rounded-md mb-2 overflow-hidden">
+                    {thumbnails?.get(product.id) ? (
+                      <img src={thumbnails.get(product.id)} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <Package className="h-6 w-6 text-muted-foreground" />
+                    )}
                   </div>
                   <p className="text-sm font-medium truncate">{product.name}</p>
                   <p className="text-xs text-muted-foreground">{product.sku}</p>
@@ -108,7 +117,18 @@ export function POSProductGrid({ products, categories, activeCategory, onCategor
                       onClick={() => !outOfStock && onAddToCart(product)}
                       className={`cursor-pointer ${outOfStock ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
-                      <TableCell className="font-medium">{product.name}</TableCell>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          {thumbnails?.get(product.id) ? (
+                            <img src={thumbnails.get(product.id)} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
+                          ) : (
+                            <div className="w-8 h-8 rounded bg-muted flex items-center justify-center shrink-0">
+                              <Package className="w-4 h-4 text-muted-foreground" />
+                            </div>
+                          )}
+                          {product.name}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-muted-foreground">{product.sku}</TableCell>
                       <TableCell className="text-right font-medium">{formatKz(product.sell_price)}</TableCell>
                       <TableCell className="text-right">
