@@ -4,6 +4,8 @@ import { POSHeader } from "@/components/pos/POSHeader";
 import { POSProductGrid } from "@/components/pos/POSProductGrid";
 import { POSCart, type CartItem } from "@/components/pos/POSCart";
 import { POSPaymentDialog } from "@/components/pos/POSPaymentDialog";
+import { POSOpeningDeclaration } from "@/components/pos/POSOpeningDeclaration";
+import type { DenominationEntry } from "@/components/financas/DenominationPanel";
 import { useProducts, type ProductRow } from "@/hooks/useProducts";
 import { useCategories } from "@/hooks/useCategories";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -45,6 +47,8 @@ export default function POS() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [panelDialogOpen, setPanelDialogOpen] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [openingTotal, setOpeningTotal] = useState(0);
   const isMobile = useIsMobile();
 
   const [tabs, setTabs] = useState<SaleTab[]>([createTab(1)]);
@@ -171,6 +175,17 @@ export default function POS() {
     onDiscountChange: setDiscount, onDiscountTypeChange: setDiscountType,
     onFinalize: () => { setPaymentOpen(true); setDrawerOpen(false); },
   };
+
+  if (!registerOpen) {
+    return (
+      <POSOpeningDeclaration
+        onConfirm={(total) => {
+          setOpeningTotal(total);
+          setRegisterOpen(true);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-background">
