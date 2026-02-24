@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import {
   Package, Search, Plus, Filter, Download, Upload, AlertTriangle, Edit, Trash2, Barcode, Eye, ShoppingCart, ChevronUp, ChevronDown, ArrowUpDown, MoreVertical,
@@ -17,7 +17,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useProducts, useProductMutations, type ProductRow } from "@/hooks/useProducts";
 import { useCategories, useAllSubcategories } from "@/hooks/useCategories";
+import { useProductThumbnails } from "@/hooks/useProductImages";
 import { ProductImportDialog } from "@/components/products/ProductImportDialog";
+import { ProductImageUpload } from "@/components/products/ProductImageUpload";
 
 function formatKz(value: number) {
   return value.toLocaleString("pt-AO") + " Kz";
@@ -32,6 +34,9 @@ const Products = () => {
   const { data: categories = [] } = useCategories();
   const { data: subcategories = [] } = useAllSubcategories();
   const { createProduct, updateProduct, deleteProduct } = useProductMutations();
+
+  const productIds = useMemo(() => products.map((p) => p.id), [products]);
+  const { data: thumbnails } = useProductThumbnails(productIds);
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -355,7 +360,11 @@ const Products = () => {
                       <TableCell className="text-xs text-muted-foreground">{idx + 1}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded bg-muted flex items-center justify-center shrink-0"><Package className="w-4 h-4 text-muted-foreground" /></div>
+                          {thumbnails?.get(product.id) ? (
+                            <img src={thumbnails.get(product.id)} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
+                          ) : (
+                            <div className="w-8 h-8 rounded bg-muted flex items-center justify-center shrink-0"><Package className="w-4 h-4 text-muted-foreground" /></div>
+                          )}
                           <div>
                             <p className="text-sm font-medium text-foreground">{product.name}</p>
                             <p className="text-[10px] text-muted-foreground">Pack: {product.pack_size} {product.unit}</p>
@@ -526,7 +535,10 @@ const Products = () => {
                     <SelectItem value="pct">Pacote (pct)</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
+              {editProduct && (
+                <ProductImageUpload productId={editProduct.id} />
+              )}
+            </div>
             </div>
 
             <DialogFooter>
